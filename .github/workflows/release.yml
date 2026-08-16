@@ -1,0 +1,31 @@
+name: Build and publish Windows release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Pobierz kod repozytorium
+        uses: actions/checkout@v6
+
+      - name: Ustaw Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Zainstaluj zależności
+        run: npm ci
+
+      - name: Zbuduj i opublikuj GitHub Release
+        run: npm run release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
