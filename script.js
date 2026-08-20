@@ -1,16 +1,26 @@
 const { ipcRenderer } = require('electron');
 
-const APP_BUILD_TAG = 'station-fix-2026-08-16-02';
+const APP_BUILD_TAG = 'server-timeline-schedule-fix-2026-08-19-21';
 console.log(`[SimRail SIP] Build: ${APP_BUILD_TAG}`);
 
 // ==========================================
 // 1. ZEGAR, GŁOŚNOŚĆ I WSPÓLNY INTERFEJS
 // ==========================================
 let currentServerId = '';
-let activeServerUtcOffset = 0; 
 let activeServerPcToServerDelta = 0; 
 let currentTtsVolume = 1.0;
 let appMode = 'onboard';
+let activeServerCode = '';
+
+const API_REQUEST_TIMEOUT_MS = 10000;
+const API_LIVE_STALE_MS = 75000;
+const API_CLOCK_STALE_MS = 75000;
+const API_CLOCK_RECHECK_MS = 30000;
+const liveSnapshotStateByServer = new Map();
+const serverClockStateByServer = new Map();
+let serverClockHealthInterval = null;
+let selectedServerClockProblem = null;
+let lastApiHttpSuccessAt = 0;
 
 const setupScreen = document.getElementById('setup-screen');
 const sipScreen = document.getElementById('sip-screen'); 
@@ -44,6 +54,49 @@ const backBtns = document.querySelectorAll('.back-btn');
 const settingsBtns = document.querySelectorAll('.settings-btn');
 const volumePanels = document.querySelectorAll('.volume-panel');
 const volumeSlidersArray = document.querySelectorAll('.volume-slider');
+const randomStationAnnouncementsToggles = document.querySelectorAll('.random-station-announcements-toggle');
+
+const RANDOM_STATION_ANNOUNCEMENTS_STORAGE_KEY = 'simrail-sip:random-station-announcements-enabled';
+const RANDOM_STATION_ANNOUNCEMENT_INTERVAL_MS = 5 * 60000;
+const RANDOM_STATION_ANNOUNCEMENT_RETRY_MS = 15000;
+const RANDOM_STATION_ANNOUNCEMENTS = [
+    'Informujemy, że na stacji obowiązuje zakaz palenia tytoniu oraz papierosów elektronicznych.',
+    'Jeżeli jesteś świadkiem podejrzanego lub niebezpiecznego zachowania na stacji, pamiętaj o możliwości powiadomienia straży ochrony kolei.'
+];
+
+let randomStationAnnouncementsEnabled = true;
+let randomStationAnnouncementTimer = null;
+
+try {
+    randomStationAnnouncementsEnabled = localStorage.getItem(RANDOM_STATION_ANNOUNCEMENTS_STORAGE_KEY) !== 'false';
+} catch (err) {
+    console.warn('[KOMUNIKATY LOSOWE] Nie udało się odczytać ustawienia:', err);
+}
+
+randomStationAnnouncementsToggles.forEach(toggle => {
+    toggle.checked = randomStationAnnouncementsEnabled;
+    toggle.addEventListener('change', () => {
+        randomStationAnnouncementsEnabled = toggle.checked;
+        randomStationAnnouncementsToggles.forEach(otherToggle => {
+            otherToggle.checked = randomStationAnnouncementsEnabled;
+        });
+
+        try {
+            localStorage.setItem(
+                RANDOM_STATION_ANNOUNCEMENTS_STORAGE_KEY,
+                String(randomStationAnnouncementsEnabled)
+            );
+        } catch (err) {
+            console.warn('[KOMUNIKATY LOSOWE] Nie udało się zapisać ustawienia:', err);
+        }
+
+        if (randomStationAnnouncementsEnabled && isStationBoardVisible()) {
+            scheduleRandomStationAnnouncement();
+        } else {
+            stopRandomStationAnnouncements();
+        }
+    });
+});
 
 let activeAudioElements = []; 
 
@@ -87,35 +140,564 @@ volumePanels.forEach((panel) => {
     panel.appendChild(countdownElement);
 });
 
+const CHANGELOG_STORAGE_KEY = 'simrail-sip:last-shown-changelog-version';
+const CHANGELOG_FALLBACK_VERSION = '2.1.0';
+const whatsNewModal = document.getElementById('whats-new-modal');
+const whatsNewVersion = document.getElementById('whats-new-version');
+const closeWhatsNewButton = document.getElementById('close-whats-new');
+const closeWhatsNewIcon = document.getElementById('close-whats-new-icon');
+let currentAppVersion = CHANGELOG_FALLBACK_VERSION;
+
+function rememberCurrentChangelogVersion() {
+    try {
+        localStorage.setItem(CHANGELOG_STORAGE_KEY, currentAppVersion);
+    } catch (err) {
+        console.warn('[CO NOWEGO] Nie udało się zapamiętać wyświetlonej wersji:', err);
+    }
+}
+
+function openWhatsNewModal() {
+    if (!whatsNewModal) return;
+
+    whatsNewModal.classList.remove('hidden');
+    requestAnimationFrame(() => closeWhatsNewButton?.focus());
+}
+
+function closeWhatsNewModal() {
+    if (!whatsNewModal) return;
+
+    whatsNewModal.classList.add('hidden');
+    rememberCurrentChangelogVersion();
+}
+
+document.querySelectorAll('.whats-new-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+        volumePanels.forEach(panel => panel.classList.add('hidden'));
+        openWhatsNewModal();
+    });
+});
+
+closeWhatsNewButton?.addEventListener('click', closeWhatsNewModal);
+closeWhatsNewIcon?.addEventListener('click', closeWhatsNewModal);
+
+whatsNewModal?.addEventListener('click', (event) => {
+    if (event.target === whatsNewModal) closeWhatsNewModal();
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && whatsNewModal && !whatsNewModal.classList.contains('hidden')) {
+        closeWhatsNewModal();
+    }
+});
+
+async function initializeWhatsNew() {
+    try {
+        const versionFromMain = await ipcRenderer.invoke('get-app-version');
+        if (typeof versionFromMain === 'string' && versionFromMain.trim()) {
+            currentAppVersion = versionFromMain.trim();
+        }
+    } catch (err) {
+        console.warn('[CO NOWEGO] Nie udało się pobrać wersji aplikacji:', err);
+    }
+
+    if (whatsNewVersion) whatsNewVersion.textContent = `Wersja ${currentAppVersion}`;
+
+    let lastShownVersion = null;
+    try {
+        lastShownVersion = localStorage.getItem(CHANGELOG_STORAGE_KEY);
+    } catch (err) {
+        console.warn('[CO NOWEGO] Nie udało się odczytać zapisanej wersji:', err);
+    }
+
+    if (lastShownVersion !== currentAppVersion) {
+        setTimeout(openWhatsNewModal, 600);
+    }
+}
+
+initializeWhatsNew();
+
+const API_STATUS_COLORS = {
+    ok: '#00e676',
+    checking: '#ffcc00',
+    warning: '#ff9800',
+    error: '#ff5252'
+};
+
+const API_STATUS_AUTO_COLLAPSE_MS = 5000;
+const API_STATUS_HINT_MS = 5000;
+let apiStatusIntroStarted = false;
+let apiStatusIntroFinished = false;
+let apiStatusAutoCollapseTimer = null;
+let apiStatusHintTimer = null;
+
+function getApiStatusHintElement() {
+    let hint = document.getElementById('api-health-hint');
+    if (hint) return hint;
+
+    hint = document.createElement('div');
+    hint.id = 'api-health-hint';
+    hint.textContent = 'Kliknij po szczegóły';
+    hint.style.position = 'fixed';
+    hint.style.left = '43px';
+    hint.style.bottom = '8px';
+    hint.style.zIndex = '9997';
+    hint.style.padding = '6px 9px';
+    hint.style.borderRadius = '6px';
+    hint.style.fontSize = '12px';
+    hint.style.fontWeight = '600';
+    hint.style.color = '#ffffff';
+    hint.style.background = 'rgba(0, 0, 0, 0.72)';
+    hint.style.border = '1px solid rgba(255,255,255,0.18)';
+    hint.style.pointerEvents = 'none';
+    hint.style.userSelect = 'none';
+    hint.style.display = 'none';
+    hint.style.opacity = '0';
+    hint.style.transition = 'opacity 0.2s ease';
+    document.body.appendChild(hint);
+    return hint;
+}
+
+function hideApiStatusHint() {
+    if (apiStatusHintTimer) {
+        clearTimeout(apiStatusHintTimer);
+        apiStatusHintTimer = null;
+    }
+
+    const hint = document.getElementById('api-health-hint');
+    if (!hint) return;
+    hint.style.opacity = '0';
+    setTimeout(() => {
+        if (hint.style.opacity === '0') hint.style.display = 'none';
+    }, 220);
+}
+
+function showApiStatusHint() {
+    const hint = getApiStatusHintElement();
+    if (apiStatusHintTimer) clearTimeout(apiStatusHintTimer);
+
+    hint.style.display = 'block';
+    requestAnimationFrame(() => {
+        hint.style.opacity = '1';
+    });
+
+    apiStatusHintTimer = setTimeout(() => {
+        hideApiStatusHint();
+    }, API_STATUS_HINT_MS);
+}
+
+function renderApiStatusElement(el) {
+    const state = el.dataset.state || 'checking';
+    const message = el.dataset.message || 'API: sprawdzanie...';
+    const collapsed = el.dataset.collapsed === 'true';
+    const color = API_STATUS_COLORS[state] || '#ffffff';
+
+    if (collapsed) {
+        // Po zwinięciu zostaje tylko kolorowa kropka odpowiadająca stanowi API.
+        el.textContent = '';
+        el.style.width = '16px';
+        el.style.height = '16px';
+        el.style.minWidth = '16px';
+        el.style.padding = '0';
+        el.style.borderRadius = '50%';
+        el.style.background = color;
+        el.style.border = '2px solid rgba(255,255,255,0.55)';
+        el.style.boxShadow = `0 0 7px ${color}`;
+        el.style.color = color;
+        el.title = `${message}\nKliknij, aby rozwinąć informacje o API.`;
+    } else {
+        el.textContent = message;
+        el.style.width = 'auto';
+        el.style.height = 'auto';
+        el.style.minWidth = '0';
+        el.style.padding = '6px 10px';
+        el.style.borderRadius = '6px';
+        el.style.background = 'rgba(0, 0, 0, 0.65)';
+        el.style.border = '1px solid rgba(255,255,255,0.18)';
+        el.style.boxShadow = 'none';
+        el.style.color = color;
+        el.title = 'Kliknij, aby zwinąć informacje o API do kolorowej kropki.';
+    }
+}
+
+function getApiStatusElement() {
+    let el = document.getElementById('api-health-status');
+    if (el) return el;
+
+    el = document.createElement('div');
+    el.id = 'api-health-status';
+    el.style.position = 'fixed';
+    el.style.left = '15px';
+    el.style.bottom = '10px';
+    el.style.zIndex = '9998';
+    el.style.fontSize = '13px';
+    el.style.fontWeight = '600';
+    el.style.lineHeight = '1.2';
+    el.style.cursor = 'pointer';
+    el.style.userSelect = 'none';
+    el.style.pointerEvents = 'auto';
+    el.style.display = 'none';
+    el.style.transition = 'width 0.15s ease, height 0.15s ease, padding 0.15s ease, border-radius 0.15s ease, background 0.15s ease';
+    el.dataset.collapsed = 'false';
+    el.dataset.state = 'checking';
+    el.dataset.message = 'API: sprawdzanie...';
+
+    el.addEventListener('click', () => {
+        // Od chwili ręcznej interakcji kontrolka działa już wyłącznie ręcznie.
+        if (apiStatusAutoCollapseTimer) {
+            clearTimeout(apiStatusAutoCollapseTimer);
+            apiStatusAutoCollapseTimer = null;
+        }
+        apiStatusIntroFinished = true;
+        hideApiStatusHint();
+
+        el.dataset.collapsed = el.dataset.collapsed === 'true' ? 'false' : 'true';
+        renderApiStatusElement(el);
+    });
+
+    document.body.appendChild(el);
+    renderApiStatusElement(el);
+    return el;
+}
+
+function startApiStatusIntroIfNeeded(el) {
+    if (apiStatusIntroStarted || apiStatusIntroFinished) return;
+
+    apiStatusIntroStarted = true;
+    el.dataset.collapsed = 'false';
+    renderApiStatusElement(el);
+
+    apiStatusAutoCollapseTimer = setTimeout(() => {
+        apiStatusAutoCollapseTimer = null;
+        apiStatusIntroFinished = true;
+        el.dataset.collapsed = 'true';
+        renderApiStatusElement(el);
+        showApiStatusHint();
+    }, API_STATUS_AUTO_COLLAPSE_MS);
+}
+
+function setApiHealthStatus(state, message) {
+    const el = getApiStatusElement();
+
+    // Zmiana stanu API aktualizuje treść/kolor, ale po zakończeniu krótkiej
+    // prezentacji startowej nie rozwija kontrolki automatycznie.
+    el.dataset.state = state;
+    el.dataset.message = message;
+    el.style.display = 'block';
+    renderApiStatusElement(el);
+    startApiStatusIntroIfNeeded(el);
+}
+
+function makeApiError(message, code = 'API_ERROR') {
+    const err = new Error(message);
+    err.code = code;
+    return err;
+}
+
+function parseApiTimestamp(value) {
+    if (value === null || value === undefined || value === '') return null;
+
+    if (typeof value === 'number') {
+        let n = value;
+        if (n > 1000000000 && n < 100000000000) n *= 1000;
+        return Number.isFinite(n) && n > 1000000000000 ? n : null;
+    }
+
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getServerClockInfo(server) {
+    const possibleProps = ['simulatorTime', 'simulatorTimeInMs', 'simulatedTime', 'serverTime', 'simTime'];
+
+    for (const prop of possibleProps) {
+        if (server[prop] === undefined || server[prop] === null) continue;
+        const serverMs = parseApiTimestamp(server[prop]);
+        if (serverMs === null) continue;
+
+        // WAŻNE: serwer SimRail może mieć zupełnie inną datę i godzinę niż komputer.
+        // Nie porównujemy go z czasem rzeczywistym. Różnica jest prawidłowa i służy
+        // wyłącznie do ustawienia zegara aplikacji na czas wybranego serwera.
+        return {
+            delta: serverMs - Date.now(),
+            serverMs,
+            source: prop
+        };
+    }
+
+    // W API SIT utcOffsetHours nie oznacza wyłącznie strefy czasowej. Dla serwerów
+    // działających na innej dacie zawiera pełne przesunięcie osi czasu symulacji,
+    // np. kilka tysięcy godzin. Budujemy z niego aktualny czas serwera, ale nigdy
+    // nie dodajemy tej wartości ponownie do godzin zapisanych w rozkładzie.
+    const timelineOffsetHours = Number(server.utcOffsetHours);
+    if (Number.isFinite(timelineOffsetHours)) {
+        const realReferenceMs = parseApiTimestamp(server.lastUpdated) || Date.now();
+        const delta = timelineOffsetHours * 3600000;
+
+        return {
+            delta,
+            serverMs: realReferenceMs + delta,
+            source: 'utcOffsetHours'
+        };
+    }
+
+    // Brak zarówno bezpośredniego zegara, jak i przesunięcia czasu serwera.
+    return { delta: 0, serverMs: null, source: 'system' };
+}
+
+function initializeServerClockSample(serverCode, serverMs) {
+    if (!serverCode || serverMs === null) return;
+
+    serverClockStateByServer.set(serverCode, {
+        reportedMs: serverMs,
+        changedAtReal: Date.now(),
+        verified: false
+    });
+}
+
+function observeServerClock(serverCode, serverMs) {
+    if (!serverCode || serverMs === null) {
+        return { ok: true, pending: true, reason: 'API nie udostępnia osobnego zegara tego serwera.' };
+    }
+
+    const nowReal = Date.now();
+    const previous = serverClockStateByServer.get(serverCode);
+
+    if (!previous) {
+        initializeServerClockSample(serverCode, serverMs);
+        return { ok: true, pending: true, reason: 'Sprawdzam, czy zegar serwera się odświeża.' };
+    }
+
+    // Nie interesuje nas, JAKA jest data/godzina serwera. Interesuje nas tylko,
+    // czy wartość zwracana przez API zmienia się między kolejnymi odczytami.
+    if (serverMs !== previous.reportedMs) {
+        serverClockStateByServer.set(serverCode, {
+            reportedMs: serverMs,
+            changedAtReal: nowReal,
+            verified: true
+        });
+        return { ok: true, pending: false };
+    }
+
+    if (nowReal - previous.changedAtReal >= API_CLOCK_STALE_MS) {
+        return { ok: false, pending: false, reason: 'Zegar serwera w API przestał się odświeżać.' };
+    }
+
+    return {
+        ok: true,
+        pending: !previous.verified,
+        reason: previous.verified ? '' : 'Czekam na zmianę zegara serwera, aby potwierdzić świeżość danych.'
+    };
+}
+
+function buildActiveTrainsFingerprint(activeTrains) {
+    if (!Array.isArray(activeTrains)) return { fingerprint: '', moving: false, liveCount: 0 };
+
+    const rows = [];
+    let moving = false;
+    let liveCount = 0;
+
+    for (const t of activeTrains) {
+        const live = t?.liveData;
+        const pos = live?.position;
+        if (!live || !pos) continue;
+
+        liveCount++;
+        const speed = Number(live.speed) || 0;
+        if (Math.abs(speed) > 1) moving = true;
+
+        const lat = Number(pos.latitude);
+        const lon = Number(pos.longitude);
+        rows.push([
+            t.journeyId || '',
+            Number.isFinite(lat) ? lat.toFixed(5) : '',
+            Number.isFinite(lon) ? lon.toFixed(5) : '',
+            Math.round(speed),
+            live.delay ?? ''
+        ].join(':'));
+    }
+
+    rows.sort();
+    return { fingerprint: rows.join('|'), moving, liveCount };
+}
+
+function assessActiveTrainsFreshness(activeTrains) {
+    if (!Array.isArray(activeTrains)) {
+        return { ok: false, pending: false, reason: 'API zwróciło nieprawidłowy format listy pociągów.' };
+    }
+
+    const serverKey = activeServerCode || currentServerId || 'unknown';
+    const snapshot = buildActiveTrainsFingerprint(activeTrains);
+
+    // Nie porównujemy godzin rozkładu z czasem Windowsa. Serwery mogą mieć inną
+    // datę/godzinę. Zamrożenie wykrywamy po tym, czy liveData rzeczywiście się zmienia.
+    if (snapshot.liveCount >= 2 && snapshot.fingerprint) {
+        const previous = liveSnapshotStateByServer.get(serverKey);
+        const nowReal = Date.now();
+
+        if (!previous) {
+            liveSnapshotStateByServer.set(serverKey, {
+                fingerprint: snapshot.fingerprint,
+                changedAt: nowReal,
+                hadMotion: snapshot.moving,
+                verified: false
+            });
+            return { ok: true, pending: true, reason: 'Sprawdzam, czy pozycje pociągów się odświeżają.' };
+        }
+
+        if (previous.fingerprint !== snapshot.fingerprint) {
+            liveSnapshotStateByServer.set(serverKey, {
+                fingerprint: snapshot.fingerprint,
+                changedAt: nowReal,
+                hadMotion: snapshot.moving,
+                verified: true
+            });
+            return { ok: true, pending: false };
+        }
+
+        previous.hadMotion = previous.hadMotion || snapshot.moving;
+
+        if (previous.hadMotion && nowReal - previous.changedAt >= API_LIVE_STALE_MS) {
+            return { ok: false, pending: false, reason: 'Dane pozycji pociągów w API przestały się odświeżać.' };
+        }
+
+        return {
+            ok: true,
+            pending: !previous.verified,
+            reason: previous.verified ? '' : 'Czekam na zmianę pozycji pociągów, aby potwierdzić świeżość danych.'
+        };
+    }
+
+    // Brak wystarczającej liczby liveData nie oznacza awarii. Wtedy głównym
+    // wskaźnikiem świeżości pozostaje zegar serwera.
+    return { ok: true, pending: true, reason: 'Za mało danych GPS do niezależnej kontroli ruchu.' };
+}
+
+function isServerClockVerified() {
+    if (!activeServerCode) return false;
+    return serverClockStateByServer.get(activeServerCode)?.verified === true;
+}
+
+function isLiveDataVerified() {
+    const serverKey = activeServerCode || currentServerId || 'unknown';
+    return liveSnapshotStateByServer.get(serverKey)?.verified === true;
+}
+
+function validateActiveTrainsResponse(activeTrains) {
+    const code = activeServerCode ? activeServerCode.toUpperCase() : '';
+
+    if (selectedServerClockProblem) {
+        const message = `API: NIEAKTUALNE DANE${code ? ` • ${code}` : ''} — ${selectedServerClockProblem}`;
+        setApiHealthStatus('error', message);
+        throw makeApiError(selectedServerClockProblem, 'STALE_API_DATA');
+    }
+
+    const assessment = assessActiveTrainsFreshness(activeTrains);
+
+    if (!assessment.ok) {
+        const message = `API: NIEAKTUALNE DANE${code ? ` • ${code}` : ''} — ${assessment.reason}`;
+        setApiHealthStatus('error', message);
+        throw makeApiError(assessment.reason, 'STALE_API_DATA');
+    }
+
+    if (isServerClockVerified() || isLiveDataVerified()) {
+        setApiHealthStatus('ok', `API: OK${code ? ` • ${code}` : ''}`);
+    } else {
+        const reason = assessment.reason || 'weryfikuję świeżość danych';
+        setApiHealthStatus('checking', `API: SPRAWDZANIE${code ? ` • ${code}` : ''} — ${reason}`);
+    }
+
+    return true;
+}
+
+async function refreshSelectedServerClockHealth(force = false) {
+    if (!activeServerCode || !currentServerId) return true;
+
+    const nowReal = Date.now();
+    const state = serverClockStateByServer.get(activeServerCode);
+    if (!force && state?.lastFetchAt && nowReal - state.lastFetchAt < API_CLOCK_RECHECK_MS) {
+        return true;
+    }
+
+    const servers = await fetchJsonFresh(
+        `${API_BASE}/sit-servers/v2/?includeOffline=false`,
+        `Kontrola zegara ${activeServerCode.toUpperCase()}`
+    );
+
+    if (!Array.isArray(servers)) {
+        throw makeApiError('Lista serwerów ma nieprawidłowy format.', 'API_FORMAT_ERROR');
+    }
+
+    const server = servers.find(s => String(s.code).toLowerCase() === String(activeServerCode).toLowerCase());
+    if (!server) {
+        selectedServerClockProblem = 'Wybrany serwer zniknął z listy aktywnych serwerów.';
+        throw makeApiError(selectedServerClockProblem, 'STALE_API_DATA');
+    }
+
+    const clockInfo = getServerClockInfo(server);
+    const previous = serverClockStateByServer.get(activeServerCode);
+    const observation = observeServerClock(activeServerCode, clockInfo.serverMs);
+    const updated = serverClockStateByServer.get(activeServerCode);
+    if (updated) updated.lastFetchAt = nowReal;
+
+    // Dopasowujemy zegar aplikacji do NOWEGO odczytu tylko wtedy, gdy jest to
+    // pierwszy odczyt albo API faktycznie podało inną wartość. Przy zamrożonym
+    // endpointcie nie cofamy zegara co 30 sekund do tej samej starej godziny.
+    if (clockInfo.serverMs !== null && (!previous || clockInfo.serverMs !== previous.reportedMs)) {
+        activeServerPcToServerDelta = clockInfo.delta;
+        if (serversMap[activeServerCode]) {
+            serversMap[activeServerCode].pcToServerDelta = activeServerPcToServerDelta;
+            serversMap[activeServerCode].serverMs = clockInfo.serverMs;
+        }
+    }
+
+    if (!observation.ok) {
+        selectedServerClockProblem = observation.reason;
+        const code = activeServerCode.toUpperCase();
+        setApiHealthStatus('error', `API: NIEAKTUALNE DANE • ${code} — ${observation.reason}`);
+        throw makeApiError(observation.reason, 'STALE_API_DATA');
+    }
+
+    selectedServerClockProblem = null;
+
+    if (observation.pending && !isLiveDataVerified()) {
+        setApiHealthStatus('checking', `API: SPRAWDZANIE • ${activeServerCode.toUpperCase()} — ${observation.reason}`);
+    } else {
+        setApiHealthStatus('ok', `API: OK • ${activeServerCode.toUpperCase()}`);
+    }
+
+    return true;
+}
+
+function startServerClockHealthMonitor() {
+    if (serverClockHealthInterval) clearInterval(serverClockHealthInterval);
+    serverClockHealthInterval = setInterval(() => {
+        refreshSelectedServerClockHealth(true).catch(err => {
+            console.error('[API] Kontrola zegara serwera:', err);
+        });
+    }, API_CLOCK_RECHECK_MS);
+}
+
 function getSimNow() {
     return new Date().getTime() + activeServerPcToServerDelta;
 }
 
 function formatServerTimeStr(dateMs) {
     if(!dateMs) return '--:--';
-    
-    // NAPRAWA: Zmuszamy wartość do bycia liczbą, aby uniknąć NaN i sklejania stringów
-    let localServerMs = new Date(dateMs).getTime();
-    if (isNaN(localServerMs)) return '--:--';
 
-    if (currentServerId) {
-        localServerMs += (activeServerUtcOffset * 3600000);
-    } else {
-        localServerMs += (new Date().getTimezoneOffset() * -60000);
-    }
-    const serverTime = new Date(localServerMs);
+    // Daty rozkładowe bez informacji o strefie są godzinami ściennymi serwera.
+    // toTimestamp zapisuje je na neutralnej osi UTC, dzięki czemu Windows nie
+    // przesuwa ich według strefy komputera użytkownika.
+    const serverTimelineMs = toTimestamp(dateMs);
+    if (serverTimelineMs === null) return '--:--';
+
+    const serverTime = new Date(serverTimelineMs);
     return `${String(serverTime.getUTCHours()).padStart(2, '0')}:${String(serverTime.getUTCMinutes()).padStart(2, '0')}`;
 }
 
 function updateClock() {
     let nowUtcMs = getSimNow();
-    let localServerMs = nowUtcMs;
-    if (currentServerId) {
-        localServerMs += (activeServerUtcOffset * 3600000);
-    } else {
-        localServerMs += (new Date().getTimezoneOffset() * -60000);
-    }
-    const serverTime = new Date(localServerMs);
+    if (!currentServerId) nowUtcMs += (new Date().getTimezoneOffset() * -60000);
+    const serverTime = new Date(nowUtcMs);
     const hours = String(serverTime.getUTCHours()).padStart(2, '0');
     const minutes = String(serverTime.getUTCMinutes()).padStart(2, '0');
     
@@ -127,22 +709,9 @@ updateClock();
 setInterval(updateClock, 1000);
 
 function syncTimeWithActiveTrains(activeTrains) {
-    if (!activeTrains || activeTrains.length === 0) return;
-    
-    let maxOrigin = 0;
-    activeTrains.forEach(t => {
-        if (t.originEvent && t.originEvent.scheduledTime) {
-            let ms = new Date(t.originEvent.scheduledTime).getTime();
-            if (ms > maxOrigin) maxOrigin = ms;
-        }
-    });
-    
-    if (maxOrigin > 0) {
-        let inferredDelta = maxOrigin - new Date().getTime();
-        if (activeServerPcToServerDelta === 0 || Math.abs(activeServerPcToServerDelta - inferredDelta) > 3600000) {
-            activeServerPcToServerDelta = inferredDelta + 180000;
-        }
-    }
+    // Nie próbujemy wyliczać czasu serwera z godzin pociągów i nie porównujemy
+    // go z czasem komputera. Ta funkcja odpowiada wyłącznie za kontrolę liveData.
+    validateActiveTrainsResponse(activeTrains);
 }
 
 function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
@@ -171,6 +740,84 @@ function formatTrainNumberForTTS(trainName) {
 // ==========================================
 let audioQueue = [];
 let isPlayingAudio = false;
+let activeStationTickerToken = 0;
+
+function isStationBoardVisible() {
+    return appMode === 'station' && stationScreen.style.display !== 'none';
+}
+
+function getStationAnnouncementTicker() {
+    let ticker = document.getElementById('station-announcement-ticker');
+    if (ticker) return ticker;
+
+    ticker = document.createElement('div');
+    ticker.id = 'station-announcement-ticker';
+    ticker.className = 'station-announcement-ticker';
+    ticker.hidden = true;
+    ticker.setAttribute('aria-hidden', 'true');
+
+    const textElement = document.createElement('div');
+    textElement.className = 'station-announcement-ticker__text';
+    ticker.appendChild(textElement);
+    document.body.appendChild(ticker);
+
+    return ticker;
+}
+
+function moveApiStatusAboveAnnouncementTicker(active) {
+    const apiStatus = document.getElementById('api-health-status');
+    const apiHint = document.getElementById('api-health-hint');
+
+    if (apiStatus) {
+        apiStatus.style.bottom = active ? '62px' : '10px';
+        apiStatus.style.zIndex = active ? '10001' : '9998';
+    }
+
+    if (apiHint) {
+        apiHint.style.bottom = active ? '60px' : '8px';
+        apiHint.style.zIndex = active ? '10001' : '9997';
+    }
+}
+
+function showStationAnnouncementTicker(text, durationSeconds) {
+    if (!isStationBoardVisible() || !text) return null;
+
+    const ticker = getStationAnnouncementTicker();
+    const textElement = ticker.querySelector('.station-announcement-ticker__text');
+    const token = ++activeStationTickerToken;
+    const safeDuration = Number.isFinite(durationSeconds) && durationSeconds > 0
+        ? Math.max(1, durationSeconds)
+        : Math.max(4, text.length / 12);
+
+    textElement.textContent = text;
+    textElement.style.animation = 'none';
+    ticker.hidden = false;
+    ticker.setAttribute('aria-hidden', 'false');
+
+    // Wymusza rozpoczęcie każdej zapowiedzi od prawej krawędzi ekranu.
+    void textElement.offsetWidth;
+    textElement.style.animation = `station-announcement-scroll ${safeDuration}s linear forwards`;
+    moveApiStatusAboveAnnouncementTicker(true);
+
+    return token;
+}
+
+function hideStationAnnouncementTicker(token = null) {
+    if (token !== null && token !== activeStationTickerToken) return;
+
+    const ticker = document.getElementById('station-announcement-ticker');
+    if (ticker) {
+        const textElement = ticker.querySelector('.station-announcement-ticker__text');
+        if (textElement) {
+            textElement.style.animation = 'none';
+            textElement.textContent = '';
+        }
+        ticker.hidden = true;
+        ticker.setAttribute('aria-hidden', 'true');
+    }
+
+    moveApiStatusAboveAnnouncementTicker(false);
+}
 
 function base64ToObjectUrl(base64, mimeType = 'audio/mpeg') {
     const binaryString = atob(base64);
@@ -250,6 +897,7 @@ async function processAudioQueue() {
             activeAudioElements.push(audio);
 
             let finished = false;
+            let tickerToken = null;
 
             const cleanup = () => {
                 if (finished) return;
@@ -257,6 +905,7 @@ async function processAudioQueue() {
 
                 activeAudioElements = activeAudioElements.filter(a => a !== audio);
                 clearTimeout(timeout);
+                hideStationAnnouncementTicker(tickerToken);
 
                 try {
                     audio.pause();
@@ -278,6 +927,10 @@ async function processAudioQueue() {
                 console.error('Błąd odtwarzania TTS (onerror):', e);
                 cleanup();
             };
+
+            audio.addEventListener('playing', () => {
+                tickerToken = showStationAnnouncementTicker(text, audio.duration);
+            }, { once: true });
 
             audio.play().catch((e) => {
                 console.error('audio.play() error dla TTS:', e);
@@ -313,28 +966,135 @@ function playGongAndSpeak(text, voice) {
     processAudioQueue();
 }
 
+function stopRandomStationAnnouncements() {
+    if (!randomStationAnnouncementTimer) return;
+    clearTimeout(randomStationAnnouncementTimer);
+    randomStationAnnouncementTimer = null;
+}
+
+function scheduleRandomStationAnnouncement(delay = RANDOM_STATION_ANNOUNCEMENT_INTERVAL_MS) {
+    stopRandomStationAnnouncements();
+
+    if (!randomStationAnnouncementsEnabled || !isStationBoardVisible()) return;
+
+    randomStationAnnouncementTimer = setTimeout(() => {
+        randomStationAnnouncementTimer = null;
+
+        if (!randomStationAnnouncementsEnabled || !isStationBoardVisible()) return;
+
+        // Nie dokładamy komunikatu informacyjnego do zajętej kolejki. Jeżeli
+        // trwa zapowiedź pociągu, czekamy na wolny system audio i próbujemy ponownie.
+        if (isPlayingAudio || audioQueue.length > 0) {
+            scheduleRandomStationAnnouncement(RANDOM_STATION_ANNOUNCEMENT_RETRY_MS);
+            return;
+        }
+
+        const message = RANDOM_STATION_ANNOUNCEMENTS[
+            Math.floor(Math.random() * RANDOM_STATION_ANNOUNCEMENTS.length)
+        ];
+
+        playGongAndSpeak(message, 'pl-PL-ZofiaNeural');
+        console.log(`[STACJA] Odtwarzam losowy komunikat informacyjny: ${message}`);
+        scheduleRandomStationAnnouncement();
+    }, delay);
+}
+
 // ==========================================
 // 3. LOGIKA MENU GŁÓWNEGO I WYBÓR TRYBU
 // ==========================================
 const API_BASE = 'https://apis.simrail.tools';
+const TIMETABLE_API_BASE = 'https://api1.aws.simrail.eu:8082/api';
+const TIMETABLE_REQUEST_TIMEOUT_MS = 30000;
+const TIMETABLE_CACHE_TTL_MS = 15 * 60000;
 
 // Dynamiczne dane SimRail nie mogą pochodzić z cache Chromium.
 // Każde żądanie dostaje unikalny parametr czasu i cache: 'no-store'.
 async function fetchJsonFresh(url, label = 'API') {
     const separator = url.includes('?') ? '&' : '?';
     const freshUrl = `${url}${separator}_ts=${Date.now()}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS);
 
-    const response = await fetch(freshUrl, {
-        method: 'GET',
-        cache: 'no-store'
-    });
+    try {
+        const response = await fetch(freshUrl, {
+            method: 'GET',
+            cache: 'no-store',
+            signal: controller.signal
+        });
 
-    if (!response.ok) {
-        throw new Error(`${label}: HTTP ${response.status} ${response.statusText}`);
+        if (!response.ok) {
+            throw makeApiError(`${label}: HTTP ${response.status} ${response.statusText}`, 'API_HTTP_ERROR');
+        }
+
+        const data = await response.json();
+        lastApiHttpSuccessAt = Date.now();
+        return data;
+    } catch (err) {
+        if (err?.name === 'AbortError') {
+            setApiHealthStatus('error', `API: BRAK ODPOWIEDZI — ${label}`);
+            throw makeApiError(`${label}: przekroczono ${API_REQUEST_TIMEOUT_MS / 1000}s oczekiwania na odpowiedź API.`, 'API_TIMEOUT');
+        }
+
+        if (err?.code !== 'STALE_API_DATA') {
+            setApiHealthStatus('error', `API: BŁĄD POŁĄCZENIA — ${label}`);
+        }
+        throw err;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+async function fetchFullServerTimetable(serverCode) {
+    const normalizedServerCode = String(serverCode || '').trim().toLowerCase();
+    if (!/^[a-z0-9-]+$/.test(normalizedServerCode)) {
+        throw makeApiError('Nieprawidłowy kod serwera dla rozkładu jazdy.', 'API_FORMAT_ERROR');
     }
 
-    return await response.json();
+    if (
+        fullServerTimetableCache &&
+        fullServerTimetableCache.serverCode === normalizedServerCode &&
+        Date.now() - fullServerTimetableCache.fetchedAt < TIMETABLE_CACHE_TTL_MS
+    ) {
+        return fullServerTimetableCache.data;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), TIMETABLE_REQUEST_TIMEOUT_MS);
+    const url = `${TIMETABLE_API_BASE}/getAllTimetables?serverCode=${encodeURIComponent(normalizedServerCode)}&_ts=${Date.now()}`;
+
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            cache: 'no-store',
+            signal: controller.signal
+        });
+
+        if (!response.ok) {
+            throw makeApiError(`Pełny rozkład: HTTP ${response.status} ${response.statusText}`, 'API_HTTP_ERROR');
+        }
+
+        const data = await response.json();
+        if (!Array.isArray(data)) {
+            throw makeApiError('Pełny rozkład ma nieprawidłowy format.', 'API_FORMAT_ERROR');
+        }
+
+        fullServerTimetableCache = {
+            serverCode: normalizedServerCode,
+            fetchedAt: Date.now(),
+            data
+        };
+
+        return data;
+    } catch (err) {
+        if (err?.name === 'AbortError') {
+            throw makeApiError(`Pełny rozkład: przekroczono ${TIMETABLE_REQUEST_TIMEOUT_MS / 1000}s oczekiwania.`, 'API_TIMEOUT');
+        }
+        throw err;
+    } finally {
+        clearTimeout(timeout);
+    }
 }
+
 let serversMap = {}; 
 let trackingInterval = null;
 let boardRefreshInterval = null;
@@ -350,34 +1110,89 @@ let targetStationList = [];
 let activeStationName = '';
 let stationTimetable = [];
 let departedHistory = []; 
+let cancelledHistory = [];
 let knownJourneyIds = new Set(); 
 let isSyncing = false;
 let globalActiveTrainsCount = 0; 
+let availableServers = [];
+let fullServerTimetableCache = null;
 
 const trainSearch = document.getElementById('train-search');
 const trainTypeFilter = document.getElementById('train-type-filter');
 const trainSelect = document.getElementById('train-select');
 const refreshTrainsBtn = document.getElementById('refresh-trains-btn');
 const stationSelect = document.getElementById('station-select');
+const stationSearchInput = document.getElementById('station-search');
+const favoriteServerBtn = document.getElementById('favorite-server-btn');
+const favoriteStationBtn = document.getElementById('favorite-station-btn');
 
 stationSelect.size = 8; 
 stationSelect.style.width = '100%';
 stationSelect.style.marginTop = '5px';
 
-const stationSearchInput = document.createElement('input');
-stationSearchInput.type = 'text';
-stationSearchInput.id = 'station-search';
-stationSearchInput.placeholder = 'Wpisz nazwę by przefiltrować...';
-stationSearchInput.style.padding = '8px';
-stationSearchInput.style.width = '100%';
-stationSearchInput.style.boxSizing = 'border-box';
-stationSearchInput.style.borderRadius = '5px';
-stationSearchInput.style.border = '1px solid #333';
-stationSearchInput.style.backgroundColor = '#1e1e1e';
-stationSearchInput.style.color = '#fff';
+const FAVORITE_SERVERS_STORAGE_KEY = 'simrail-sip:favorite-servers';
+const FAVORITE_STATIONS_STORAGE_KEY = 'simrail-sip:favorite-stations';
 
-if (stationSelect.parentElement) {
-    stationSelect.parentElement.insertBefore(stationSearchInput, stationSelect);
+function readFavoriteSet(storageKey) {
+    try {
+        const stored = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        return new Set(Array.isArray(stored) ? stored.filter(value => typeof value === 'string') : []);
+    } catch (err) {
+        console.warn(`[ULUBIONE] Nie udało się odczytać ${storageKey}:`, err);
+        return new Set();
+    }
+}
+
+function saveFavoriteSet(storageKey, values) {
+    try {
+        localStorage.setItem(storageKey, JSON.stringify([...values]));
+    } catch (err) {
+        console.warn(`[ULUBIONE] Nie udało się zapisać ${storageKey}:`, err);
+    }
+}
+
+const favoriteServerCodes = readFavoriteSet(FAVORITE_SERVERS_STORAGE_KEY);
+const favoriteStationNames = readFavoriteSet(FAVORITE_STATIONS_STORAGE_KEY);
+
+function updateFavoriteServerButton() {
+    const serverCode = serverSelect.value;
+    const isFavorite = Boolean(serverCode) && favoriteServerCodes.has(serverCode);
+    favoriteServerBtn.disabled = !serverCode;
+    favoriteServerBtn.textContent = isFavorite ? '★' : '☆';
+    favoriteServerBtn.classList.toggle('is-favorite', isFavorite);
+    favoriteServerBtn.title = isFavorite
+        ? 'Usuń wybrany serwer z ulubionych'
+        : 'Dodaj wybrany serwer do ulubionych';
+}
+
+function updateFavoriteStationButton() {
+    const stationName = stationSelect.value;
+    const isFavorite = Boolean(stationName) && favoriteStationNames.has(stationName);
+    favoriteStationBtn.disabled = stationSelect.disabled || !stationName;
+    favoriteStationBtn.textContent = isFavorite ? '★' : '☆';
+    favoriteStationBtn.classList.toggle('is-favorite', isFavorite);
+    favoriteStationBtn.title = isFavorite
+        ? 'Usuń wybraną stację z ulubionych'
+        : 'Dodaj wybraną stację do ulubionych';
+}
+
+function renderServerOptions(selectedCode = serverSelect.value) {
+    serverSelect.innerHTML = '<option value="">-- Wybierz serwer --</option>';
+
+    [...availableServers]
+        .sort((a, b) => {
+            const favoriteDifference = Number(favoriteServerCodes.has(b.code)) - Number(favoriteServerCodes.has(a.code));
+            return favoriteDifference || a.code.localeCompare(b.code);
+        })
+        .forEach(srv => {
+            const opt = document.createElement('option');
+            opt.value = srv.code;
+            opt.textContent = `${favoriteServerCodes.has(srv.code) ? '★ ' : ''}${srv.code.toUpperCase()} - Serwer Aktywny`;
+            serverSelect.appendChild(opt);
+        });
+
+    if (selectedCode && serversMap[selectedCode]) serverSelect.value = selectedCode;
+    updateFavoriteServerButton();
 }
 
 const stationListRaw = [
@@ -393,9 +1208,15 @@ const stationListRaw = [
 ];
 
 function loadStaticStations(filterText = "") {
+    const selectedStation = stationSelect.value;
     stationSelect.innerHTML = '';
     const query = filterText.toLowerCase();
-    const filtered = stationListRaw.filter(st => st.toLowerCase().includes(query)).sort((a, b) => a.localeCompare(b));
+    const filtered = stationListRaw
+        .filter(st => st.toLowerCase().includes(query))
+        .sort((a, b) => {
+            const favoriteDifference = Number(favoriteStationNames.has(b)) - Number(favoriteStationNames.has(a));
+            return favoriteDifference || a.localeCompare(b);
+        });
     
     if (filtered.length === 0) {
         const opt = document.createElement('option');
@@ -407,14 +1228,45 @@ function loadStaticStations(filterText = "") {
         filtered.forEach(st => {
             const opt = document.createElement('option');
             opt.value = st;
-            opt.textContent = st;
+            opt.textContent = `${favoriteStationNames.has(st) ? '★ ' : ''}${st}`;
             stationSelect.appendChild(opt);
         });
+
+        if (selectedStation && filtered.includes(selectedStation)) {
+            stationSelect.value = selectedStation;
+        }
     }
+
+    updateFavoriteStationButton();
 }
 
 stationSearchInput.addEventListener('input', (e) => {
     loadStaticStations(e.target.value);
+    checkStartCondition();
+});
+
+favoriteServerBtn.addEventListener('click', () => {
+    const serverCode = serverSelect.value;
+    if (!serverCode) return;
+
+    if (favoriteServerCodes.has(serverCode)) favoriteServerCodes.delete(serverCode);
+    else favoriteServerCodes.add(serverCode);
+
+    saveFavoriteSet(FAVORITE_SERVERS_STORAGE_KEY, favoriteServerCodes);
+    renderServerOptions(serverCode);
+});
+
+favoriteStationBtn.addEventListener('click', () => {
+    const stationName = stationSelect.value;
+    if (!stationName) return;
+
+    if (favoriteStationNames.has(stationName)) favoriteStationNames.delete(stationName);
+    else favoriteStationNames.add(stationName);
+
+    saveFavoriteSet(FAVORITE_STATIONS_STORAGE_KEY, favoriteStationNames);
+    loadStaticStations(stationSearchInput.value);
+    stationSelect.value = stationName;
+    updateFavoriteStationButton();
     checkStartCondition();
 });
 
@@ -438,9 +1290,20 @@ modeStationBtn.addEventListener('click', () => {
 
 async function loadServers() {
     try {
+        setApiHealthStatus('checking', 'API: sprawdzanie dostępności...');
         serverSelect.innerHTML = '<option value="">Ładowanie...</option>';
         refreshServersBtn.disabled = true;
         modeSelectionDiv.classList.add('disabled');
+        serversMap = {};
+        availableServers = [];
+        activeServerCode = '';
+        liveSnapshotStateByServer.clear();
+        serverClockStateByServer.clear();
+        selectedServerClockProblem = null;
+        if (serverClockHealthInterval) {
+            clearInterval(serverClockHealthInterval);
+            serverClockHealthInterval = null;
+        }
         
         trainSearch.value = '';
         trainSearch.placeholder = '-- Wybierz serwer najpierw --';
@@ -462,59 +1325,117 @@ async function loadServers() {
             `${API_BASE}/sit-servers/v2/?includeOffline=false`,
             'Lista serwerów'
         );
+
+        if (!Array.isArray(servers)) {
+            throw makeApiError('Lista serwerów ma nieprawidłowy format.', 'API_FORMAT_ERROR');
+        }
         
-        serverSelect.innerHTML = '<option value="">-- Wybierz serwer --</option>';
+        availableServers = servers;
         servers.forEach(srv => {
-            let delta = 0;
-            const possibleProps = ['simulatorTime', 'simulatorTimeInMs', 'simulatedTime', 'serverTime', 'simTime'];
-            for (let prop of possibleProps) {
-                if (srv[prop]) {
-                    let ms = new Date(srv[prop]).getTime();
-                    if (!isNaN(ms) && ms > 1000000000000) {
-                        delta = ms - new Date().getTime();
-                        break;
-                    }
-                }
-            }
+            const clockInfo = getServerClockInfo(srv);
 
             serversMap[srv.code] = { 
                 id: srv.id, 
-                utcOffsetHours: srv.utcOffsetHours || 0,
-                pcToServerDelta: delta
+                pcToServerDelta: clockInfo.delta,
+                clockSource: clockInfo.source,
+                serverMs: clockInfo.serverMs
             };
 
-            const opt = document.createElement('option');
-            opt.value = srv.code;
-            opt.textContent = `${srv.code.toUpperCase()} - Serwer Aktywny`;
-            serverSelect.appendChild(opt);
+            initializeServerClockSample(srv.code, clockInfo.serverMs);
         });
-        
+
+        renderServerOptions();
+
+        setApiHealthStatus('ok', 'API: dostępne • wybierz serwer');
         refreshServersBtn.disabled = false;
     } catch (err) {
+        console.error('[API] Nie udało się pobrać listy serwerów:', err);
         serverSelect.innerHTML = '<option value="">Błąd API SIT</option>';
+        modeSelectionDiv.classList.add('disabled');
+        stationSelect.disabled = true;
+        stationSearchInput.disabled = true;
+        startBtn.disabled = true;
         refreshServersBtn.disabled = false;
+        setApiHealthStatus('error', 'API: NIEDOSTĘPNE — nie udało się pobrać listy serwerów');
     }
 }
+
 refreshServersBtn.addEventListener('click', loadServers);
 
-serverSelect.addEventListener('change', () => {
-    if (serverSelect.value) {
-        const sData = serversMap[serverSelect.value];
-        currentServerId = sData.id;
-        activeServerUtcOffset = sData.utcOffsetHours;
-        activeServerPcToServerDelta = sData.pcToServerDelta;
+serverSelect.addEventListener('change', async () => {
+    updateFavoriteServerButton();
+    modeSelectionDiv.classList.add('disabled');
+    stationSelect.disabled = true;
+    stationSearchInput.disabled = true;
+    startBtn.disabled = true;
+    trainSearch.disabled = true;
+    trainTypeFilter.disabled = true;
+    trainSelect.disabled = true;
+    refreshTrainsBtn.disabled = true;
+
+    if (!serverSelect.value) {
+        activeServerCode = '';
+        currentServerId = '';
+        selectedServerClockProblem = null;
+        if (serverClockHealthInterval) { clearInterval(serverClockHealthInterval); serverClockHealthInterval = null; }
+        setApiHealthStatus('ok', 'API: dostępne • wybierz serwer');
+        updateFavoriteStationButton();
+        return;
+    }
+
+    const sData = serversMap[serverSelect.value];
+    activeServerCode = serverSelect.value;
+    currentServerId = sData.id;
+    activeServerPcToServerDelta = sData.pcToServerDelta;
+
+    selectedServerClockProblem = null;
+    liveSnapshotStateByServer.delete(activeServerCode);
+    setApiHealthStatus('checking', `API: sprawdzanie ${activeServerCode.toUpperCase()}...`);
+
+    try {
+        // Pierwsza kontrola porównuje aktualny odczyt zegara serwera z próbką
+        // pobraną przy wczytywaniu listy. Nie ma znaczenia, czy serwer ma dziś
+        // inną datę lub godzinę niż komputer użytkownika.
+        await refreshSelectedServerClockHealth(true);
+        startServerClockHealthMonitor();
+
+        const healthTrains = await fetchJsonFresh(
+            `${API_BASE}/sit-journeys/v2/active?serverId=${currentServerId}`,
+            `Test serwera ${activeServerCode.toUpperCase()}`
+        );
+        syncTimeWithActiveTrains(healthTrains);
 
         modeSelectionDiv.classList.remove('disabled');
         stationSelect.disabled = false;
         stationSearchInput.disabled = false;
-        loadTrainsForOnboard(serverSelect.value);
-    } else {
-        loadServers(); 
+        updateFavoriteStationButton();
+
+        // Lista pociągów dla trybu pokładowego pobierze świeży zestaw jeszcze raz.
+        await loadTrainsForOnboard(serverSelect.value);
+        checkStartCondition();
+    } catch (err) {
+        console.error(`[API] Serwer ${activeServerCode.toUpperCase()} nie przeszedł kontroli świeżości:`, err);
+        modeSelectionDiv.classList.add('disabled');
+        stationSelect.disabled = true;
+        stationSearchInput.disabled = true;
+        trainSearch.disabled = true;
+        trainTypeFilter.disabled = true;
+        trainSelect.disabled = true;
+        refreshTrainsBtn.disabled = true;
+        startBtn.disabled = true;
+
+        const reason = err?.code === 'STALE_API_DATA'
+            ? 'API zwraca nieaktualne dane. Poczekaj na przywrócenie działania i kliknij odśwież.'
+            : 'Brak poprawnego połączenia z API. Kliknij odśwież i spróbuj ponownie.';
+
+        trainSelect.innerHTML = `<option value="">${reason}</option>`;
     }
-    checkStartCondition();
 });
 
-stationSelect.addEventListener('change', checkStartCondition);
+stationSelect.addEventListener('change', () => {
+    updateFavoriteStationButton();
+    checkStartCondition();
+});
 trainSelect.addEventListener('change', checkStartCondition);
 
 function checkStartCondition() {
@@ -535,6 +1456,7 @@ backBtns.forEach(btn => {
         if (trackingInterval) clearInterval(trackingInterval);
         if (boardRefreshInterval) clearInterval(boardRefreshInterval);
         if (countdownInterval) clearInterval(countdownInterval);
+        stopRandomStationAnnouncements();
         document.querySelectorAll('.refresh-countdown').forEach(el => el.style.display = 'none');
         
         const nextStationEl = document.querySelector('.next-station');
@@ -546,7 +1468,10 @@ backBtns.forEach(btn => {
         const ulEl = document.querySelector('.route-list ul');
         if(ulEl) ulEl.innerHTML = '';
         const tbody = document.getElementById('station-departures-body');
-        if(tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 40px;">Zatrzymano system stacyjny.</td></tr>';
+        if(tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 40px;">Zatrzymano system stacyjny.</td></tr>';
+        hideStationAnnouncementTicker();
+        document.getElementById('departed-modal').style.display = 'none';
+        document.getElementById('cancelled-modal').style.display = 'none';
         
         sipScreen.style.display = 'none';
         stationScreen.style.display = 'none';
@@ -560,6 +1485,13 @@ document.getElementById('departed-btn').addEventListener('click', () => {
 });
 document.getElementById('close-modal').addEventListener('click', () => {
     document.getElementById('departed-modal').style.display = 'none';
+});
+document.getElementById('cancelled-btn').addEventListener('click', () => {
+    renderCancelledModal();
+    document.getElementById('cancelled-modal').style.display = 'flex';
+});
+document.getElementById('close-cancelled-modal').addEventListener('click', () => {
+    document.getElementById('cancelled-modal').style.display = 'none';
 });
 
 function renderDepartedModal() {
@@ -581,14 +1513,120 @@ function renderDepartedModal() {
     });
 }
 
+function getStationRecordHistoryKey(t) {
+    return t.journeyId || t.scheduleRunId || `${t.trainName}:${t.rawDepTime}`;
+}
+
+function removeTrainFromCancelledHistory(t) {
+    const historyKey = getStationRecordHistoryKey(t);
+    cancelledHistory = cancelledHistory.filter(item => item.historyKey !== historyKey);
+}
+
+function addTrainToCancelledHistory(t, cancelledAt) {
+    const historyKey = getStationRecordHistoryKey(t);
+    if (cancelledHistory.some(item => item.historyKey === historyKey)) return;
+
+    cancelledHistory.push({
+        ...t,
+        historyKey,
+        cancelledAt
+    });
+}
+
+function renderCancelledModal() {
+    const list = document.getElementById('cancelled-list');
+    list.innerHTML = '';
+    const now = getSimNow();
+    cancelledHistory.sort((a, b) => b.cancelledAt - a.cancelledAt);
+
+    if (cancelledHistory.length === 0) {
+        list.innerHTML = '<li>Brak pociągów odwołanych podczas bieżącej pracy tablicy.</li>';
+        return;
+    }
+
+    cancelledHistory.forEach(t => {
+        const mins = Math.max(0, Math.floor((now - t.cancelledAt) / 60000));
+        const li = document.createElement('li');
+        li.innerHTML = `<strong>${t.time} ${t.trainName}</strong> do stacji ${t.destination}<br><span style="color:#ff4444">Odwołany ${mins} minut temu</span>`;
+        list.appendChild(li);
+    });
+}
+
 // ==========================================
 // 4. TRYB STACYJNY (DYŻURNY RUCHU)
 // ==========================================
 const STATION_REFRESH_MS = 15000;
 const STATION_GPS_AT_PLATFORM_METERS = 300;
 const STATION_ANNOUNCE_DISTANCE_METERS = 1000;
+const STATION_DELAY_ANNOUNCEMENT_MINUTES = 5;
 const STATION_MISSING_LIMIT = 4; // 4 x 15 s = ok. 60 s przed uznaniem pociągu za odwołany
 const STATION_DEPARTURE_FALLBACK_MS = 3 * 60000;
+
+// Tylko te typy trafiają na tablicę i korzystają z zapowiedzi pasażerskich.
+// Inne składy mogą być śledzone wyłącznie po to, aby ostrzec o przejeździe
+// bez zatrzymania. Ich postoje techniczne nadal są całkowicie pomijane.
+const PASSENGER_TRAIN_TYPES = new Set([
+    'NATIONAL_EXPRESS_TRAIN',
+    'INTER_NATIONAL_EXPRESS_TRAIN',
+    'INTER_REGIONAL_EXPRESS_TRAIN',
+    'INTER_REGIONAL_TRAIN',
+    'REGIONAL_FAST_TRAIN',
+    'REGIONAL_TRAIN'
+]);
+
+function isPassengerTrainType(type) {
+    return PASSENGER_TRAIN_TYPES.has(String(type || '').trim());
+}
+
+function isPassengerActiveTrain(train) {
+    return isPassengerTrainType(train?.originEvent?.transport?.type);
+}
+
+function getStationStopType(event) {
+    return String(event?.stopType || '').trim().toUpperCase();
+}
+
+function isCommercialStationStopEvent(event) {
+    return getStationStopType(event) === 'PASSENGER';
+}
+
+function isTechnicalStationStopEvent(event) {
+    return getStationStopType(event) === 'TECHNICAL';
+}
+
+const LONG_DISTANCE_EXPRESS_TYPES = new Set([
+    'NATIONAL_EXPRESS_TRAIN',
+    'INTER_NATIONAL_EXPRESS_TRAIN'
+]);
+
+function containsTrainCategory(value, category) {
+    return String(value || '').toUpperCase().includes(String(category || '').toUpperCase());
+}
+
+// W SimRail oznaczenie EIJ jest współdzielone przez dwa różne rodzaje pociągów.
+// Rozróżniamy je po typie transportu z API:
+// - EIJ + typ dalekobieżny => Pendolino / Express InterCity Premium,
+// - EIJ + pozostały typ pasażerski => regionalny pośpieszny ŁKA.
+function isEijPendolino(type, ...labels) {
+    const isEij = labels.some(label => containsTrainCategory(label, 'EIJ'));
+    return isEij && LONG_DISTANCE_EXPRESS_TYPES.has(String(type || '').trim());
+}
+
+function isEijRegionalLka(type, ...labels) {
+    const isEij = labels.some(label => containsTrainCategory(label, 'EIJ'));
+    return isEij && !isEijPendolino(type, ...labels);
+}
+
+function isExpressTrainForUi(type, ...labels) {
+    const hasEip = labels.some(label => containsTrainCategory(label, 'EIP'));
+    const hasMpe = labels.some(label => containsTrainCategory(label, 'MPE'));
+    const hasLs = labels.some(label => containsTrainCategory(label, 'ŁS'));
+
+    if (hasEip || hasMpe || isEijPendolino(type, ...labels)) return true;
+    if (hasLs || isEijRegionalLka(type, ...labels)) return false;
+
+    return LONG_DISTANCE_EXPRESS_TYPES.has(String(type || '').trim());
+}
 
 function normalizeDelayMinutes(value) {
     const number = Number(value);
@@ -598,15 +1636,141 @@ function normalizeDelayMinutes(value) {
 
 function toTimestamp(value) {
     if (!value) return null;
+
+    // API rozkładowe zwracają czas serwera bez oznaczenia strefy (np. 13:42).
+    // Zamieniamy taki zapis na wspólną oś czasu, odwracając przesunięcie używane
+    // przez zegar serwera. Dzięki temu porównania nie zależą od strefy Windowsa.
+    if (typeof value === 'string') {
+        const match = value.trim().match(
+            /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?$/
+        );
+
+        if (match) {
+            const [, year, month, day, hour, minute, second = '0', millisecond = '0'] = match;
+            const serverWallClockUtc = Date.UTC(
+                Number(year),
+                Number(month) - 1,
+                Number(day),
+                Number(hour),
+                Number(minute),
+                Number(second),
+                Number(millisecond.slice(0, 3).padEnd(3, '0'))
+            );
+            return serverWallClockUtc;
+        }
+    }
+
     const timestamp = new Date(value).getTime();
     return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+// Opóźnienie dla tablicy stacyjnej musi pochodzić z konkretnego zdarzenia
+// na WYBRANEJ STACJI. liveData.delay z listy aktywnych pociągów opisuje
+// bieżący stan pociągu na trasie i może być inny niż prognoza dla stacji.
+function getSignedStationEventDelayMinutes(event) {
+    if (!event) return null;
+
+    const realtimeMs = toTimestamp(event.realtimeTime);
+    const scheduledMs = toTimestamp(event.scheduledTime);
+
+    if (realtimeMs === null || scheduledMs === null) return null;
+
+    const value = (realtimeMs - scheduledMs) / 60000;
+    return Number.isFinite(value) ? Math.round(value) : null;
+}
+
+function getRelevantStationDelayMinutes(arrEvent, depEvent, departureContext = false) {
+    const primaryEvent = departureContext ? (depEvent || arrEvent) : (arrEvent || depEvent);
+    const secondaryEvent = departureContext ? arrEvent : depEvent;
+
+    const primaryDelay = getSignedStationEventDelayMinutes(primaryEvent);
+    if (primaryDelay !== null) return primaryDelay;
+
+    return getSignedStationEventDelayMinutes(secondaryEvent);
+}
+
+async function refreshStationSpecificRealtime(t) {
+    try {
+        const data = await fetchJsonFresh(
+            `${API_BASE}/sit-journeys/v2/by-id/${t.journeyId}`,
+            `Aktualizacja stacji ${t.journeyId}`
+        );
+
+        if (!data || !Array.isArray(data.events)) return;
+
+        const normalizedActiveStation = activeStationName.trim().toLowerCase();
+        const allStationEvs = data.events.filter(ev =>
+            ev.stopPlace &&
+            ev.stopPlace.name &&
+            ev.stopPlace.name.trim().toLowerCase() === normalizedActiveStation
+        );
+
+        if (allStationEvs.length === 0) return;
+
+        const stationEvs = allStationEvs.filter(isCommercialStationStopEvent);
+        if (stationEvs.length === 0) {
+            // Usuwamy rekord tylko wtedy, gdy API jednoznacznie zmieniło postój
+            // handlowy na techniczny. Brak danych nie może usuwać pociągu z tablicy.
+            if (allStationEvs.some(isTechnicalStationStopEvent)) {
+                t.technicalStopOnly = true;
+            }
+            return;
+        }
+
+        t.technicalStopOnly = false;
+
+        const arrEvent = stationEvs.find(e => e.type === 'ARRIVAL') || null;
+        const depEvent = stationEvs.find(e => e.type === 'DEPARTURE') || null;
+        const mainEvent = arrEvent || depEvent || stationEvs[0];
+
+        const signedDelay = getRelevantStationDelayMinutes(
+            arrEvent,
+            depEvent,
+            t.gpsStatus === 'Na stacji'
+        );
+
+        if (signedDelay !== null) {
+            t.stationSignedDelayMin = signedDelay;
+            t.delayMin = Math.max(0, signedDelay);
+        }
+
+        const arrRealtimeTime = arrEvent ? toTimestamp(arrEvent.realtimeTime) : null;
+        const depRealtimeTime = depEvent ? toTimestamp(depEvent.realtimeTime) : null;
+
+        if (arrRealtimeTime !== null) {
+            t.actualArrTime = arrRealtimeTime;
+        } else if (t.rawArrTime && signedDelay !== null) {
+            t.actualArrTime = t.rawArrTime + signedDelay * 60000;
+        }
+
+        if (depRealtimeTime !== null) {
+            t.actualDepTime = depRealtimeTime;
+        } else if (t.rawDepTime && signedDelay !== null) {
+            t.actualDepTime = t.rawDepTime + signedDelay * 60000;
+        }
+
+        if (!t.rawArrTime) t.actualArrTime = t.actualDepTime;
+        if (t.actualDepTime < t.actualArrTime) t.actualDepTime = t.actualArrTime;
+
+        const stationLocation = extractStationPlatformTrack(stationEvs, mainEvent, null);
+        if (stationLocation.platform) t.platform = stationLocation.platform;
+        if (stationLocation.track) t.track = stationLocation.track;
+    } catch (err) {
+        // Chwilowy błąd szczegółów jednego pociągu nie może zatrzymać całej tablicy.
+        console.warn(`[STACJA] Nie udało się odświeżyć danych stacyjnych ${t.trainName}:`, err);
+    }
 }
 
 function getStationTrainSpeechInfo(t) {
     let trainType = 'pociąg regionalny';
     let reservationSuffix = '';
 
-    if (t.trainCategory.includes('EIP') || t.trainName.includes('EIP')) {
+    if (isEijPendolino(t.trainTypeRaw, t.trainCategory, t.trainName)) {
+        trainType = 'pociąg Express Intercity Premium';
+        reservationSuffix = ' Pociąg jest objęty obowiązkową rezerwacją miejsc.';
+    } else if (isEijRegionalLka(t.trainTypeRaw, t.trainCategory, t.trainName)) {
+        trainType = 'pociąg regionalny pośpieszny ŁKA';
+    } else if (t.trainCategory.includes('EIP') || t.trainName.includes('EIP')) {
         trainType = 'pociąg dalekobieżny intercity';
         reservationSuffix = ' Pociąg jest objęty obowiązkową rezerwacją miejsc.';
     } else if (t.trainCategory.includes('Łs') || t.trainName.includes('Łs')) {
@@ -614,7 +1778,7 @@ function getStationTrainSpeechInfo(t) {
     } else if (t.trainCategory.includes('MPE')) {
         trainType = 'pociąg dalekobieżny TLK';
         reservationSuffix = ' Pociąg jest objęty obowiązkową rezerwacją miejsc.';
-    } else if (["NATIONAL_EXPRESS_TRAIN", "INTER_NATIONAL_EXPRESS_TRAIN"].includes(t.trainTypeRaw) && !t.trainName.includes('EIJ')) {
+    } else if (LONG_DISTANCE_EXPRESS_TYPES.has(t.trainTypeRaw)) {
         trainType = 'pociąg pospieszny Intercity';
         reservationSuffix = ' Pociąg jest objęty obowiązkową rezerwacją miejsc.';
     }
@@ -626,19 +1790,289 @@ function getStationTrainSpeechInfo(t) {
     return { trainType, reservationSuffix, number, viaText };
 }
 
+// API SimRail może zwracać numer peronu jako liczbę rzymską (np. II),
+// a numer toru jako liczbę. Te funkcje sprowadzają oba formaty do jednej postaci.
+function romanToInteger(value) {
+    if (value === null || value === undefined) return null;
+
+    const roman = String(value).trim().toUpperCase();
+    if (!roman || !/^[IVXLCDM]+$/.test(roman)) return null;
+
+    const values = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
+    let total = 0;
+    let previous = 0;
+
+    for (let i = roman.length - 1; i >= 0; i--) {
+        const current = values[roman[i]];
+        if (current < previous) total -= current;
+        else {
+            total += current;
+            previous = current;
+        }
+    }
+
+    return total > 0 ? total : null;
+}
+
+function parseStationNumber(value) {
+    if (value === null || value === undefined) return null;
+
+    if (typeof value === 'number') {
+        return Number.isFinite(value) && value > 0 ? Math.round(value) : null;
+    }
+
+    const raw = String(value).trim();
+    if (!raw) return null;
+
+    const directNumber = Number(raw.replace(',', '.'));
+    if (Number.isFinite(directNumber) && directNumber > 0) {
+        return Math.round(directNumber);
+    }
+
+    const digitMatch = raw.match(/\d+/);
+    if (digitMatch) {
+        const parsed = Number(digitMatch[0]);
+        if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
+    }
+
+    const romanMatch = raw.toUpperCase().match(/\b[IVXLCDM]+\b/);
+    if (romanMatch) return romanToInteger(romanMatch[0]);
+
+    return null;
+}
+
+function normalizeStationLocationValue(value) {
+    if (value === null || value === undefined) return null;
+
+    const parsed = parseStationNumber(value);
+    if (parsed !== null) return String(parsed);
+
+    const raw = String(value).trim();
+    return raw || null;
+}
+
+// Odmiana liczebników porządkowych w miejscowniku:
+// 1 -> pierwszym, 2 -> drugim, 21 -> dwudziestym pierwszym itd.
+function ordinalLocativePolish(value) {
+    const number = parseStationNumber(value);
+    if (number === null || number < 1) return null;
+
+    const underTwenty = {
+        1: 'pierwszym',
+        2: 'drugim',
+        3: 'trzecim',
+        4: 'czwartym',
+        5: 'piątym',
+        6: 'szóstym',
+        7: 'siódmym',
+        8: 'ósmym',
+        9: 'dziewiątym',
+        10: 'dziesiątym',
+        11: 'jedenastym',
+        12: 'dwunastym',
+        13: 'trzynastym',
+        14: 'czternastym',
+        15: 'piętnastym',
+        16: 'szesnastym',
+        17: 'siedemnastym',
+        18: 'osiemnastym',
+        19: 'dziewiętnastym'
+    };
+
+    const tensOrdinal = {
+        20: 'dwudziestym',
+        30: 'trzydziestym',
+        40: 'czterdziestym',
+        50: 'pięćdziesiątym',
+        60: 'sześćdziesiątym',
+        70: 'siedemdziesiątym',
+        80: 'osiemdziesiątym',
+        90: 'dziewięćdziesiątym'
+    };
+
+    const hundredCardinal = {
+        1: 'sto',
+        2: 'dwieście',
+        3: 'trzysta',
+        4: 'czterysta',
+        5: 'pięćset',
+        6: 'sześćset',
+        7: 'siedemset',
+        8: 'osiemset',
+        9: 'dziewięćset'
+    };
+
+    const hundredOrdinal = {
+        100: 'setnym',
+        200: 'dwusetnym',
+        300: 'trzechsetnym',
+        400: 'czterechsetnym',
+        500: 'pięćsetnym',
+        600: 'sześćsetnym',
+        700: 'siedemsetnym',
+        800: 'osiemsetnym',
+        900: 'dziewięćsetnym'
+    };
+
+    if (number < 20) return underTwenty[number];
+
+    if (number < 100) {
+        const tens = Math.floor(number / 10) * 10;
+        const ones = number % 10;
+        if (ones === 0) return tensOrdinal[tens] || String(number);
+        return `${tensOrdinal[tens]} ${underTwenty[ones]}`;
+    }
+
+    if (number < 1000) {
+        const hundreds = Math.floor(number / 100);
+        const rest = number % 100;
+        if (rest === 0) return hundredOrdinal[number] || String(number);
+        return `${hundredCardinal[hundreds]} ${ordinalLocativePolish(rest)}`;
+    }
+
+    // Tory/perony o takich numerach praktycznie nie występują, ale nie blokujemy TTS.
+    return String(number);
+}
+
+function getFirstNestedValue(source, keyNames, maxDepth = 4) {
+    if (!source || typeof source !== 'object') return null;
+
+    const wanted = new Set(keyNames.map(k => k.toLowerCase()));
+    const seen = new WeakSet();
+
+    function walk(value, depth) {
+        if (!value || typeof value !== 'object' || depth > maxDepth) return null;
+        if (seen.has(value)) return null;
+        seen.add(value);
+
+        for (const [key, child] of Object.entries(value)) {
+            if (
+                wanted.has(key.toLowerCase()) &&
+                child !== null &&
+                child !== undefined &&
+                String(child).trim() !== ''
+            ) {
+                return child;
+            }
+        }
+
+        for (const child of Object.values(value)) {
+            if (child && typeof child === 'object') {
+                const found = walk(child, depth + 1);
+                if (found !== null) return found;
+            }
+        }
+
+        return null;
+    }
+
+    return walk(source, 0);
+}
+
+function extractStationPlatformTrack(stationEvents, mainEvent, trainActiveData = null) {
+    const events = [
+        mainEvent,
+        ...(Array.isArray(stationEvents) ? stationEvents : [])
+    ].filter(Boolean);
+
+    const platformKeys = [
+        'platform',
+        'scheduledPlatform',
+        'plannedPlatform',
+        'platformNumber',
+        'platformNo'
+    ];
+
+    const trackKeys = [
+        'track',
+        'scheduledTrack',
+        'plannedTrack',
+        'trackNumber',
+        'trackNo'
+    ];
+
+    let platform = null;
+    let track = null;
+
+    for (const event of events) {
+        if (platform === null) {
+            platform = getFirstNestedValue(event, platformKeys);
+        }
+        if (track === null) {
+            track = getFirstNestedValue(event, trackKeys);
+        }
+        if (platform !== null && track !== null) break;
+    }
+
+    // liveData jest tylko awaryjnym źródłem, jeśli wpis rozkładowy nie zawiera danych.
+    if (platform === null && trainActiveData) {
+        platform = getFirstNestedValue(trainActiveData, platformKeys, 3);
+    }
+    if (track === null && trainActiveData) {
+        track = getFirstNestedValue(trainActiveData, trackKeys, 3);
+    }
+
+    return {
+        platform: normalizeStationLocationValue(platform),
+        track: normalizeStationLocationValue(track)
+    };
+}
+
+function buildStationLocationSpeech(t, departureContext = false) {
+    const platform = ordinalLocativePolish(t.platform);
+    const track = ordinalLocativePolish(t.track);
+
+    if (!platform && !track) return '';
+
+    if (departureContext) {
+        if (platform && track) {
+            return ` Odjazd pociągu nastąpi przy peronie ${platform}, na torze ${track}.`;
+        }
+        if (platform) {
+            return ` Odjazd pociągu nastąpi przy peronie ${platform}.`;
+        }
+        return ` Odjazd pociągu nastąpi na torze ${track}.`;
+    }
+
+    if (platform && track) {
+        return ` Pociąg zatrzyma się przy peronie ${platform}, na torze ${track}.`;
+    }
+    if (platform) {
+        return ` Pociąg zatrzyma się przy peronie ${platform}.`;
+    }
+    return ` Pociąg zatrzyma się na torze ${track}.`;
+}
+
+function ensureStationPlatformTrackColumns() {
+    const headerRow = document.querySelector('.plk-table thead tr');
+    if (!headerRow || headerRow.dataset.platformTrackReady === '1') return;
+
+    headerRow.innerHTML = `
+        <th style="width: 120px;">Godzina<br><span class="en">Time</span></th>
+        <th style="width: 230px;">Pociąg<br><span class="en">Train</span></th>
+        <th>Kierunek / Przez<br><span class="en">Destination / Via</span></th>
+        <th style="width: 90px; text-align: center;">Peron<br><span class="en">Platform</span></th>
+        <th style="width: 90px; text-align: center;">Tor<br><span class="en">Track</span></th>
+        <th style="width: 230px; text-align: right;">Status<br><span class="en">Status</span></th>
+    `;
+    headerRow.dataset.platformTrackReady = '1';
+}
+
 function buildStationStandardAnnouncement(t) {
     const { trainType, reservationSuffix, number, viaText } = getStationTrainSpeechInfo(t);
     const className = trainType.charAt(0).toUpperCase() + trainType.slice(1);
 
     // Na stacji początkowej lub gdy pociąg już stoi przy peronie mówimy o odjeździe.
     const departureContext = !t.rawArrTime || t.gpsStatus === 'Na stacji';
+    const locationSpeech = buildStationLocationSpeech(t, departureContext);
+
     if (departureContext) {
         const time = formatServerTimeStr(t.actualDepTime);
-        return `${className}, ${number} do stacji ${t.destination}${viaText}, odjedzie o godzinie ${time}.${reservationSuffix}`;
+        return `${className}, ${number} do stacji ${t.destination}${viaText}, odjedzie o godzinie ${time}.${locationSpeech}${reservationSuffix}`;
     }
 
     const time = formatServerTimeStr(t.actualArrTime);
-    return `${className}, ${number} do stacji ${t.destination}${viaText}, przyjedzie o godzinie ${time}.${reservationSuffix} Prosimy zachować ostrożność i nie zbliżać się do krawędzi peronu.`;
+    return `${className}, ${number} do stacji ${t.destination}${viaText}, przyjedzie o godzinie ${time}.${locationSpeech}${reservationSuffix} Prosimy zachować ostrożność i nie zbliżać się do krawędzi peronu.`;
 }
 
 function buildStationDelayAnnouncement(t) {
@@ -650,13 +2084,164 @@ function buildStationDelayAnnouncement(t) {
     const eventWord = departureContext ? 'odjazd' : 'przyjazd';
     const eventAction = departureContext ? 'odjedzie' : 'przyjedzie';
 
-    return `Uwaga. ${className} ${number}, planowy ${eventWord} pociągu o godzinie ${timeToSpeak}, ${eventAction} z opóźnieniem około ${t.delayMin} minut. Opóźnienie może ulec zmianie. Przepraszamy za opóźnienie.`;
+    // Komunikat o zmianie opóźnienia nie podaje peronu ani toru.
+    // Informacja lokalizacyjna pozostaje w zapowiedzi wjazdu i odjazdu ze stacji.
+    return `Uwaga. ${className} ${number}, planowy ${eventWord} pociągu o godzinie ${timeToSpeak}, ${eventAction} z opóźnieniem około ${t.delayMin} minut. Opóźnienie może ulec zmianie.`;
+}
+
+const SCHEDULED_TRAIN_TYPE_MAP = {
+    ECE: 'INTER_NATIONAL_EXPRESS_TRAIN',
+    EIE: 'NATIONAL_EXPRESS_TRAIN',
+    EIJ: 'NATIONAL_EXPRESS_TRAIN',
+    MHE: 'INTER_REGIONAL_EXPRESS_TRAIN',
+    MPE: 'INTER_REGIONAL_EXPRESS_TRAIN',
+    MOE: 'INTER_REGIONAL_TRAIN',
+    MOJ: 'INTER_REGIONAL_TRAIN',
+    RAJ: 'REGIONAL_TRAIN',
+    ROE: 'REGIONAL_TRAIN',
+    ROJ: 'REGIONAL_TRAIN',
+    RPJ: 'REGIONAL_FAST_TRAIN',
+    RPP: 'REGIONAL_FAST_TRAIN'
+};
+
+function normalizeStationName(value) {
+    return String(value || '').trim().toLocaleLowerCase('pl-PL');
+}
+
+function normalizeTrainIdentifier(value) {
+    const normalized = String(value || '').toUpperCase().replace(/\s+/g, '');
+    return /^\d+$/.test(normalized) ? normalized.replace(/^0+(?=\d)/, '') : normalized;
+}
+
+function isOfficialCommercialStop(row) {
+    return String(row?.stopType || '').trim().toLowerCase() === 'commercialstop';
+}
+
+function mapScheduledTrainType(category) {
+    return SCHEDULED_TRAIN_TYPE_MAP[String(category || '').trim().toUpperCase()] || 'REGIONAL_TRAIN';
+}
+
+function getScheduledViaText(timetable, stationIndex) {
+    const viaStations = timetable
+        .slice(stationIndex + 1)
+        .filter(isOfficialCommercialStop)
+        .map(row => row.nameForPerson || row.nameOfPoint)
+        .filter(Boolean);
+
+    if (viaStations.length === 0) return '';
+
+    let viaText = viaStations[0];
+    if (viaStations.length > 2) {
+        viaText += `, ${viaStations[Math.floor(viaStations.length / 2)]}`;
+    }
+    return viaText;
+}
+
+function findScheduledStationRecord(activeTrain, rawDepTime) {
+    const activeNumbers = new Set([
+        activeTrain?.originEvent?.transport?.number,
+        activeTrain?.destinationEvent?.transport?.number
+    ].map(normalizeTrainIdentifier).filter(Boolean));
+
+    const candidates = stationTimetable.filter(record =>
+        record.fromFullSchedule &&
+        !record.seenOnMap &&
+        !record.notSpawnedExpired &&
+        record.trainNumberKeys.some(number => activeNumbers.has(number))
+    );
+
+    if (candidates.length === 0) return null;
+
+    candidates.sort((a, b) =>
+        Math.abs(a.rawDepTime - rawDepTime) - Math.abs(b.rawDepTime - rawDepTime)
+    );
+    return candidates[0];
+}
+
+async function loadScheduledStationTimetable() {
+    const fullTimetable = await fetchFullServerTimetable(activeServerCode);
+    const normalizedStation = normalizeStationName(activeStationName);
+    const now = getSimNow();
+    const scheduledEntries = [];
+
+    fullTimetable.forEach(train => {
+        const timetable = Array.isArray(train?.timetable) ? train.timetable : [];
+        const stationIndex = timetable.findIndex(row =>
+            isOfficialCommercialStop(row) &&
+            [row.nameForPerson, row.nameOfPoint].some(name => normalizeStationName(name) === normalizedStation)
+        );
+
+        if (stationIndex === -1) return;
+
+        const stationStop = timetable[stationIndex];
+        const firstRoutePoint = timetable.find(row => row?.departureTime || row?.arrivalTime);
+        const scheduledStartTime = toTimestamp(firstRoutePoint?.departureTime || firstRoutePoint?.arrivalTime);
+        const rawArrTime = toTimestamp(stationStop.arrivalTime);
+        const rawDepTime = toTimestamp(stationStop.departureTime) || rawArrTime;
+
+        if (scheduledStartTime === null || rawDepTime === null) return;
+
+        // Pociąg niewidoczny na mapie pokazujemy wyłącznie przed jego planowym
+        // uruchomieniem. Aktywne pociągi są za chwilę scalane z danymi mapy.
+        if (scheduledStartTime <= now || rawDepTime <= now) return;
+
+        const category = String(stationStop.trainType || train.trainName || 'POC').split(/\s+-\s+/)[0].trim();
+        const displayedNumber = stationStop.displayedTrainNumber || train.trainNoLocal || train.trainNoInternational || '0';
+        const trainNumberKeys = [
+            train.trainNoLocal,
+            train.trainNoInternational,
+            stationStop.displayedTrainNumber
+        ].map(normalizeTrainIdentifier).filter(Boolean);
+
+        scheduledEntries.push({
+            journeyId: `scheduled:${train.runId || displayedNumber}:${stationStop.pointId || stationIndex}`,
+            scheduleRunId: train.runId || '',
+            scheduledStartTime,
+            trainNumberKeys: [...new Set(trainNumberKeys)],
+            fromFullSchedule: true,
+            seenOnMap: false,
+            notSpawnedExpired: false,
+            time: formatServerTimeStr(rawDepTime),
+            rawArrTime,
+            rawDepTime,
+            actualArrTime: rawArrTime || rawDepTime,
+            actualDepTime: rawDepTime,
+            stLat: 0,
+            stLon: 0,
+            currentDist: Infinity,
+            gpsStatus: 'Zaplanowany',
+            departedAt: 0,
+            trainName: `${category} ${displayedNumber}`,
+            trainCategory: category,
+            trainTypeRaw: mapScheduledTrainType(category),
+            destination: train.endStation || 'Nieznana',
+            viaText: getScheduledViaText(timetable, stationIndex),
+            platform: stationStop.platform || null,
+            track: stationStop.track || null,
+            delayMin: 0,
+            stationSignedDelayMin: 0,
+            lastDelaySpoken: 0,
+            technicalStopOnly: false,
+            isPassing: false,
+            futureEvents: [],
+            announced: false,
+            departureAnnounced: false,
+            departedAdded: false,
+            cancelled: false,
+            cancelledTime: 0,
+            missingCount: 0
+        });
+    });
+
+    stationTimetable.push(...scheduledEntries);
+    console.log(`[STACJA] Wczytano ${scheduledEntries.length} przyszłych postojów handlowych dla ${activeStationName}.`);
+    return scheduledEntries.length;
 }
 
 function getDisplayedStationJourneyIds() {
     return new Set(
         [...stationTimetable]
-            .filter(t => !t.isPassing)
+            .filter(t => !t.isPassing && !t.notSpawnedExpired && isPassengerTrainType(t.trainTypeRaw))
             .sort((a, b) => a.actualDepTime - b.actualDepTime)
             .slice(0, 10)
             .map(t => t.journeyId)
@@ -665,9 +2250,12 @@ function getDisplayedStationJourneyIds() {
 
 async function startStationMode() {
     activeStationName = stationSelect.value;
+    ensureStationPlatformTrackColumns();
     setupScreen.style.display = 'none';
     stationScreen.style.display = 'flex';
+    scheduleRandomStationAnnouncement();
     departedHistory = [];
+    cancelledHistory = [];
     document.querySelector('.plk-station-name').textContent = `STACJA: ${activeStationName}`;
 
     document.querySelectorAll('.refresh-countdown').forEach(el => el.style.display = 'block');
@@ -690,10 +2278,18 @@ async function startStationMode() {
 
 async function fetchStationTimetable() {
     const tbody = document.getElementById('station-departures-body');
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 40px; color: #ffcc00;">Łączenie z API SimRail...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 40px; color: #ffcc00;">Pobieranie pełnego rozkładu stacji...</td></tr>';
 
     stationTimetable = [];
     knownJourneyIds = new Set();
+
+    try {
+        await loadScheduledStationTimetable();
+        renderStationBoard();
+    } catch (err) {
+        // Brak pełnego rozkładu nie blokuje dotychczasowego trybu opartego na mapie.
+        console.warn('[STACJA] Nie udało się pobrać pełnego rozkładu. Używam danych aktywnych pociągów:', err);
+    }
 
     try {
         const activeTrains = await fetchJsonFresh(
@@ -704,12 +2300,19 @@ async function fetchStationTimetable() {
         syncTimeWithActiveTrains(activeTrains);
         globalActiveTrainsCount = activeTrains ? activeTrains.length : 0;
 
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding: 40px; color: #ffcc00;">Skanowanie mapy pociągów...<br><small style="color:#aaa;">(Wykryto ${globalActiveTrainsCount} aktywnych składów na serwerze)</small></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 40px; color: #ffcc00;">Skanowanie mapy pociągów...<br><small style="color:#aaa;">(Wykryto ${globalActiveTrainsCount} aktywnych składów na serwerze)</small></td></tr>`;
 
         await syncNewTrains(activeTrains);
     } catch (err) {
         console.error('[STACJA] Błąd pobierania rozkładu:', err);
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: red;">Błąd połączenia z siecią.</td></tr>';
+        if (stationTimetable.length > 0) {
+            renderStationBoard();
+        } else {
+            const text = err?.code === 'STALE_API_DATA'
+                ? 'API zwraca nieaktualne dane. Tablica nie będzie korzystać ze starej migawki.'
+                : 'Błąd połączenia z API. Spróbuj ponownie po przywróceniu działania usługi.';
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#ff5252;">${text}</td></tr>`;
+        }
     }
 }
 
@@ -718,7 +2321,13 @@ async function syncNewTrains(activeTrains) {
     isSyncing = true;
 
     try {
-        const newTrains = activeTrains.filter(t => !knownJourneyIds.has(t.journeyId));
+        // Sprawdzamy rozkład każdego nowego składu z mapy. Sam typ pociągu nie
+        // wystarcza do odrzucenia go w tym miejscu: także pociąg towarowy może
+        // przejeżdżać przez wybraną stację i wymagać ostrzeżenia. O tym, czy
+        // rekord trafi na tablicę, decydują dopiero zdarzenia konkretnej stacji.
+        const newTrains = activeTrains.filter(t =>
+            t?.journeyId && !knownJourneyIds.has(t.journeyId)
+        );
         if (newTrains.length === 0) return;
 
         const chunkSize = 15;
@@ -745,32 +2354,62 @@ async function syncNewTrains(activeTrains) {
                     // Dzięki temu chwilowy błąd API nie usuwa pociągu z kolejnych prób.
                     detailsLoaded = true;
 
-                    const stationEvs = data.events.filter(ev =>
+                    const allStationEvs = data.events.filter(ev =>
                         ev.stopPlace &&
                         ev.stopPlace.name &&
                         ev.stopPlace.name.trim().toLowerCase() === normalizedActiveStation
                     );
 
-                    if (stationEvs.length === 0) return;
+                    if (allStationEvs.length === 0) return;
+
+                    const commercialStationEvs = allStationEvs.filter(isCommercialStationStopEvent);
+
+                    // Postój techniczny nie jest przeznaczony dla pasażerów, dlatego pociąg
+                    // nie może trafić na tablicę ani wywoływać zapowiedzi stacyjnych.
+                    if (
+                        commercialStationEvs.length === 0 &&
+                        allStationEvs.some(isTechnicalStationStopEvent)
+                    ) {
+                        console.log(`[STACJA] Pominięto postój techniczny ${t.journeyId} na stacji ${activeStationName}.`);
+                        return;
+                    }
+
+                    // Dla postoju handlowego korzystamy wyłącznie ze zdarzeń PASSENGER.
+                    // Zdarzenia PASSING/NONE pozostają obsługiwane przez ostrzeżenie o przejeździe.
+                    const stationEvs = commercialStationEvs.length > 0
+                        ? commercialStationEvs
+                        : allStationEvs;
 
                     const arrEvent = stationEvs.find(e => e.type === 'ARRIVAL') || null;
                     const depEvent = stationEvs.find(e => e.type === 'DEPARTURE') || null;
                     const mainEvent = arrEvent || depEvent || stationEvs[0];
+                    const isPassing = (
+                        mainEvent.stopType === 'PASSING' ||
+                        mainEvent.stopType === 'NONE' ||
+                        mainEvent.type === 'PASSING' ||
+                        (!arrEvent && !depEvent)
+                    );
+
+                    // Pociąg niepasażerski interesuje tryb stacyjny tylko wtedy,
+                    // gdy przejeżdża bez zatrzymania. Nie pokazujemy go na tablicy
+                    // ani nie odtwarzamy dla niego zwykłej zapowiedzi pociągu.
+                    if (!isPassengerActiveTrain(t) && !isPassing) {
+                        console.log(`[STACJA] Pominięto niepasażerski postój ${t.journeyId} na stacji ${activeStationName}.`);
+                        return;
+                    }
 
                     const liveDelay = t.liveData && t.liveData.delay !== undefined
                         ? normalizeDelayMinutes(t.liveData.delay)
                         : null;
 
-                    let eventDelay = 0;
-                    if (mainEvent.realtimeTime && mainEvent.scheduledTime) {
-                        const realtimeMs = toTimestamp(mainEvent.realtimeTime);
-                        const scheduledMs = toTimestamp(mainEvent.scheduledTime);
-                        if (realtimeMs !== null && scheduledMs !== null) {
-                            eventDelay = normalizeDelayMinutes((realtimeMs - scheduledMs) / 60000);
-                        }
-                    }
-
-                    const delay = liveDelay !== null ? liveDelay : eventDelay;
+                    // Dla tablicy interesuje nas opóźnienie W TEJ KONKRETNEJ STACJI.
+                    // Najpierw bierzemy realtimeTime - scheduledTime z ARRIVAL/DEPARTURE.
+                    // liveData.delay jest tylko awaryjnym fallbackiem, gdy zdarzenie stacyjne
+                    // nie ma jeszcze własnego czasu rzeczywistego.
+                    const signedStationDelay = getRelevantStationDelayMinutes(arrEvent, depEvent, false);
+                    const delay = signedStationDelay !== null
+                        ? Math.max(0, signedStationDelay)
+                        : (liveDelay !== null ? liveDelay : 0);
 
                     // raw* = CZAS PLANOWY. To ważne: opóźnienia nie wolno doliczać do realtimeTime,
                     // bo wtedy byłoby naliczane podwójnie.
@@ -805,13 +2444,22 @@ async function syncNewTrains(activeTrains) {
                     const myIndex = data.events.indexOf(mainEvent);
                     const futureEvents = data.events.slice(myIndex + 1, -1);
 
-                    const plat = mainEvent.platform || (mainEvent.edr && mainEvent.edr.platform) || (t.liveData && t.liveData.platform) || mainEvent.scheduledPlatform || '1';
-                    const trk = mainEvent.track || (mainEvent.edr && mainEvent.edr.track) || (t.liveData && t.liveData.track) || mainEvent.scheduledTrack || '1';
+                    // Peron i tor są przypisane do konkretnego punktu rozkładu, nie do całego pociągu.
+                    // Sprawdzamy wszystkie zdarzenia tej stacji, bo w API informacja może znajdować się
+                    // np. przy DEPARTURE, podczas gdy mainEvent jest ARRIVAL.
+                    const stationLocation = extractStationPlatformTrack(stationEvs, mainEvent, t.liveData || null);
+                    const plat = stationLocation.platform;
+                    const trk = stationLocation.track;
+
+                    if (!plat && !trk) {
+                        console.warn(`[STACJA] Brak danych o peronie i torze dla ${t.journeyId} na stacji ${activeStationName}.`);
+                    }
+
                     const stLat = mainEvent.stopPlace?.position?.latitude || 0;
                     const stLon = mainEvent.stopPlace?.position?.longitude || 0;
 
                     const viaArray = futureEvents
-                        .filter(e => e.stopType === 'PASSENGER' && e.stopPlace?.name)
+                        .filter(e => isCommercialStationStopEvent(e) && e.stopPlace?.name)
                         .map(e => e.stopPlace.name)
                         .filter(name => name.toLowerCase() !== activeStationName.toLowerCase());
 
@@ -821,45 +2469,74 @@ async function syncNewTrains(activeTrains) {
                         if (viaArray.length > 2) viaText += `, ${viaArray[Math.floor(viaArray.length / 2)]}`;
                     }
 
-                    const isPassing = (
-                        mainEvent.stopType === 'PASSING' ||
-                        mainEvent.stopType === 'NONE' ||
-                        mainEvent.type === 'PASSING' ||
-                        (!arrEvent && !depEvent)
-                    );
+                    if (!stationTimetable.some(existing => existing.journeyId === t.journeyId)) {
+                        const scheduledRecord = !isPassing
+                            ? findScheduledStationRecord(t, rawDepTime)
+                            : null;
+                        const effectiveRawArrTime = scheduledRecord?.rawArrTime ?? rawArrTime;
+                        const effectiveRawDepTime = scheduledRecord?.rawDepTime ?? rawDepTime;
+                        const stationShiftMinutes = signedStationDelay !== null ? signedStationDelay : delay;
+                        const effectiveActualArrTime = scheduledRecord
+                            ? ((effectiveRawArrTime || effectiveRawDepTime) + stationShiftMinutes * 60000)
+                            : actualArrTime;
+                        const effectiveActualDepTime = scheduledRecord
+                            ? Math.max(effectiveActualArrTime, effectiveRawDepTime + stationShiftMinutes * 60000)
+                            : actualDepTime;
+                        const activeTrainNumber = t.originEvent?.transport?.number || '0';
+                        const activeTrainNumberKeys = [
+                            ...(scheduledRecord?.trainNumberKeys || []),
+                            normalizeTrainIdentifier(activeTrainNumber)
+                        ].filter(Boolean);
 
-                    if (actualDepTime + 60000 > now && !stationTimetable.some(existing => existing.journeyId === t.journeyId)) {
-                        stationTimetable.push({
+                        const activeRecordData = {
                             journeyId: t.journeyId,
-                            time: formatServerTimeStr(rawDepTime),
-                            rawArrTime,
-                            rawDepTime,
-                            actualArrTime,
-                            actualDepTime,
+                            scheduleRunId: scheduledRecord?.scheduleRunId || '',
+                            scheduledStartTime: scheduledRecord?.scheduledStartTime || toTimestamp(data.events[0]?.scheduledTime),
+                            trainNumberKeys: [...new Set(activeTrainNumberKeys)],
+                            fromFullSchedule: Boolean(scheduledRecord?.fromFullSchedule),
+                            seenOnMap: true,
+                            notSpawnedExpired: false,
+                            time: formatServerTimeStr(effectiveRawDepTime),
+                            rawArrTime: effectiveRawArrTime,
+                            rawDepTime: effectiveRawDepTime,
+                            actualArrTime: effectiveActualArrTime,
+                            actualDepTime: effectiveActualDepTime,
                             stLat,
                             stLon,
+                            currentDist: Infinity,
                             gpsStatus: 'Oczekuje',
-                            departedAt: 0,
-                            trainName: `${t.originEvent?.transport?.category || 'POC'} ${t.originEvent?.transport?.number || '0'}`,
+                            departedAt: scheduledRecord?.departedAt || 0,
+                            trainName: `${t.originEvent?.transport?.category || 'POC'} ${activeTrainNumber}`,
                             trainCategory: t.originEvent?.transport?.category || 'POC',
                             trainTypeRaw: t.originEvent?.transport?.type || 'UNKNOWN',
                             destination: destName,
-                            viaText,
-                            platform: plat,
-                            track: trk,
+                            viaText: viaText || scheduledRecord?.viaText || '',
+                            platform: plat || scheduledRecord?.platform || null,
+                            track: trk || scheduledRecord?.track || null,
                             delayMin: delay,
-                            // 0 oznacza brak opóźnienia. null powoduje jednorazowe ogłoszenie
-                            // opóźnienia, jeżeli pociąg jest już opóźniony, gdy pojawi się na tablicy.
-                            lastDelaySpoken: delay > 0 ? null : 0,
+                            stationSignedDelayMin: signedStationDelay,
+                            // Zapamiętujemy opóźnienie zastane przy pierwszym wykryciu pociągu.
+                            // Komunikat pojawi się dopiero po kolejnej zmianie wartości.
+                            lastDelaySpoken: delay,
+                            technicalStopOnly: false,
                             isPassing,
                             futureEvents,
-                            announced: false,
-                            departureAnnounced: false,
+                            announced: scheduledRecord?.announced || false,
+                            departureAnnounced: scheduledRecord?.departureAnnounced || false,
                             departedAdded: false,
                             cancelled: false,
                             cancelledTime: 0,
                             missingCount: 0
-                        });
+                        };
+
+                        if (effectiveActualDepTime + 60000 > now) {
+                            removeTrainFromCancelledHistory(activeRecordData);
+                            if (scheduledRecord) {
+                                Object.assign(scheduledRecord, activeRecordData);
+                            } else {
+                                stationTimetable.push(activeRecordData);
+                            }
+                        }
                     }
                 } catch (err) {
                     console.error(`[STACJA] Nie udało się przeskanować pociągu ${t.journeyId}:`, err);
@@ -882,10 +2559,12 @@ function renderStationBoard() {
 
     stationTimetable.sort((a, b) => a.actualDepTime - b.actualDepTime);
 
-    const displayList = stationTimetable.filter(t => !t.isPassing).slice(0, 10);
+    const displayList = stationTimetable
+        .filter(t => !t.isPassing && !t.notSpawnedExpired && isPassengerTrainType(t.trainTypeRaw))
+        .slice(0, 10);
 
     if (displayList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding: 40px; color: #8899aa;">Brak zaplanowanych przejazdów przez stację.<br><br><span style="font-size: 0.8em; opacity: 0.6;">Aktualnie na całym serwerze znajduje się ${globalActiveTrainsCount} aktywnych pociągów.</span></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 40px; color: #8899aa;">Brak zaplanowanych przejazdów przez stację.<br><br><span style="font-size: 0.8em; opacity: 0.6;">Aktualnie na całym serwerze znajduje się ${globalActiveTrainsCount} aktywnych pociągów.</span></td></tr>`;
         return;
     }
 
@@ -893,11 +2572,13 @@ function renderStationBoard() {
         const tr = document.createElement('tr');
 
         let typeStr = 'Osobowy / Regionalny';
-        if (t.trainCategory.includes('EIP') || t.trainName.includes('EIP')) typeStr = 'Dalekobieżny / Intercity';
+        if (isEijPendolino(t.trainTypeRaw, t.trainCategory, t.trainName)) typeStr = 'Intercity / Express Premium';
+        else if (isEijRegionalLka(t.trainTypeRaw, t.trainCategory, t.trainName)) typeStr = 'Regionalny / Pośpieszny ŁKA';
+        else if (t.trainCategory.includes('EIP') || t.trainName.includes('EIP')) typeStr = 'Dalekobieżny / Intercity';
         else if (t.trainCategory.includes('Łs') || t.trainName.includes('Łs')) typeStr = 'Pośpieszny / Osobowy';
         else if (t.trainCategory.includes('MPE')) typeStr = 'Dalekobieżny / TLK';
-        else if (["NATIONAL_EXPRESS_TRAIN", "INTER_NATIONAL_EXPRESS_TRAIN"].includes(t.trainTypeRaw) && !t.trainName.includes('EIJ')) typeStr = 'Dalekobieżny / Intercity';
-        else if (t.trainName.includes('EIJ') || t.trainCategory.includes('ŁKA')) typeStr = 'Regionalny / Sprinter';
+        else if (LONG_DISTANCE_EXPRESS_TYPES.has(t.trainTypeRaw)) typeStr = 'Dalekobieżny / Intercity';
+        else if (t.trainCategory.includes('ŁKA')) typeStr = 'Regionalny / Sprinter';
 
         let timeHtml = '';
         let arrHtml = formatServerTimeStr(t.rawArrTime);
@@ -923,6 +2604,8 @@ function renderStationBoard() {
 
         if (t.cancelled) {
             statusHtml = '<span style="color:#ff4444;">Odwołany</span>';
+        } else if (!t.seenOnMap) {
+            statusHtml = '<span style="color:#aaccff;">Zaplanowany</span>';
         } else if (t.gpsStatus === 'Odjechał' || (t.gpsStatus !== 'Na stacji' && now > t.actualDepTime + STATION_DEPARTURE_FALLBACK_MS)) {
             statusHtml = '<span style="color:#aaccff;">Odjechał</span>';
         } else if (t.gpsStatus === 'Na stacji') {
@@ -933,10 +2616,15 @@ function renderStationBoard() {
             statusHtml = '<span style="color:#ffcc00;">Na czas</span>';
         }
 
+        const platformDisplay = t.platform || '—';
+        const trackDisplay = t.track || '—';
+
         tr.innerHTML = `
             <td>${timeHtml}</td>
             <td><div class="plk-train-name">${t.trainName}</div><span class="plk-train-type">${typeStr}</span></td>
             <td><div class="plk-dest">${t.destination}</div>${t.viaText ? `<span class="plk-via">przez: ${t.viaText}</span>` : ''}</td>
+            <td style="text-align: center; font-weight: bold; font-size: 28px; color: #ffcc00;">${platformDisplay}</td>
+            <td style="text-align: center; font-weight: bold; font-size: 28px; color: #ffcc00;">${trackDisplay}</td>
             <td style="text-align: right; font-weight: bold; font-size: 24px;">${statusHtml}</td>
         `;
         tbody.appendChild(tr);
@@ -975,19 +2663,17 @@ function startStationLiveTracking() {
                 if (trainActive) {
                     // Sam fakt obecności journeyId na liście aktywnych oznacza, że pociąg nadal istnieje.
                     // Chwilowy brak liveData nie może zostać potraktowany jak odwołanie.
+                    if (t.cancelled) removeTrainFromCancelledHistory(t);
+                    t.seenOnMap = true;
+                    t.notSpawnedExpired = false;
                     t.missingCount = 0;
                     t.cancelled = false;
                     t.cancelledTime = 0;
 
                     if (trainActive.liveData) {
-                        if (trainActive.liveData.delay !== undefined) {
-                            t.delayMin = normalizeDelayMinutes(trainActive.liveData.delay);
-
-                            // raw* przechowuje czas PLANOWY, więc opóźnienie dodajemy tylko raz.
-                            if (t.rawArrTime) t.actualArrTime = t.rawArrTime + t.delayMin * 60000;
-                            t.actualDepTime = t.rawDepTime + t.delayMin * 60000;
-                            if (!t.rawArrTime) t.actualArrTime = t.actualDepTime;
-                        }
+                        // UWAGA: nie nadpisujemy tutaj opóźnienia wartością liveData.delay.
+                        // To jest opóźnienie bieżącej pozycji pociągu, a nie opóźnienie
+                        // dla wybranej stacji. Czasy stacyjne odświeżamy osobno z by-id.
 
                         if (t.stLat && t.stLon && trainActive.liveData.position) {
                             t.currentDist = getDistanceFromLatLonInMeters(
@@ -1005,6 +2691,13 @@ function startStationLiveTracking() {
                             }
                         }
                     }
+                } else if (!t.seenOnMap) {
+                    // Rekord z pełnego rozkładu jest widoczny tylko do chwili, w której
+                    // pociąg powinien pojawić się na mapie. Nigdy niewidzianego składu
+                    // nie oznaczamy jako odwołanego i nie zapisujemy w historii.
+                    if (t.scheduledStartTime && now >= t.scheduledStartTime) {
+                        t.notSpawnedExpired = true;
+                    }
                 } else {
                     t.missingCount = (t.missingCount || 0) + 1;
 
@@ -1014,14 +2707,38 @@ function startStationLiveTracking() {
                         !t.isPassing &&
                         !t.cancelled &&
                         !t.departedAdded &&
-                        now < t.actualDepTime
+                        t.gpsStatus !== 'Odjechał'
                     ) {
                         t.cancelled = true;
                         t.cancelledTime = now;
+                        addTrainToCancelledHistory(t, now);
                         console.warn(`[STACJA] ${t.trainName} uznany za odwołany po ${t.missingCount} kolejnych brakach w API.`);
                     }
                 }
             }
+
+            // Na tablicy i w zwykłych zapowiedziach pozostają wyłącznie składy
+            // pasażerskie. Rekordy przejazdów bez zatrzymania zachowujemy w pamięci
+            // tylko do jednorazowego komunikatu ostrzegawczego.
+            stationTimetable = stationTimetable.filter(t =>
+                (isPassengerTrainType(t.trainTypeRaw) || t.isPassing) &&
+                !t.technicalStopOnly &&
+                !t.notSpawnedExpired
+            );
+
+            // Aktualizujemy szczegółowe czasy tylko dla maks. 10 najbliższych pociągów.
+            // Dzięki temu tablica korzysta z opóźnienia dla WYBRANEJ STACJI, tak jak
+            // widok stacyjny SimRail, bez zasypywania API zapytaniami o cały serwer.
+            const stationRealtimeCandidates = [...stationTimetable]
+                .filter(t => t.seenOnMap && !t.isPassing && !t.cancelled && t.gpsStatus !== 'Odjechał')
+                .sort((a, b) => a.actualDepTime - b.actualDepTime)
+                .slice(0, 10);
+
+            await Promise.all(stationRealtimeCandidates.map(t => refreshStationSpecificRealtime(t)));
+
+            // Jeżeli świeże dane jednoznacznie wskazały postój techniczny,
+            // usuwamy pociąg jeszcze przed wyliczeniem widocznych rekordów i zapowiedzi.
+            stationTimetable = stationTimetable.filter(t => !t.technicalStopOnly);
 
             // Po aktualizacji opóźnień kolejność TOP 10 może się zmienić.
             const displayedJourneyIds = getDisplayedStationJourneyIds();
@@ -1031,23 +2748,33 @@ function startStationLiveTracking() {
                 const isDisplayed = displayedJourneyIds.has(t.journeyId);
                 let standardAnnouncementPlayedThisCycle = false;
 
-                // Komunikaty o opóźnieniu dotyczą pociągów widocznych na tablicy.
-                if (isDisplayed && !t.cancelled && !t.isPassing && t.gpsStatus !== 'Odjechał') {
+                // Komunikaty o opóźnieniu dotyczą pociągów widocznych na tablicy
+                // i są odtwarzane dopiero od 5 minut opóźnienia.
+                if (isDisplayed && t.seenOnMap && !t.cancelled && !t.isPassing && t.gpsStatus !== 'Odjechał') {
                     const previousSpokenDelay = t.lastDelaySpoken;
 
-                    if (t.delayMin > 0 && previousSpokenDelay !== t.delayMin) {
+                    if (
+                        t.delayMin >= STATION_DELAY_ANNOUNCEMENT_MINUTES &&
+                        previousSpokenDelay !== t.delayMin
+                    ) {
                         playGongAndSpeak(buildStationDelayAnnouncement(t), stationVoice);
                         t.lastDelaySpoken = t.delayMin;
                         console.log(`[STACJA] Zapowiedź opóźnienia ${t.trainName}: +${t.delayMin} min.`);
-                    } else if (t.delayMin === 0 && typeof previousSpokenDelay === 'number' && previousSpokenDelay > 0) {
+                    } else if (
+                        t.delayMin === 0 &&
+                        typeof previousSpokenDelay === 'number' &&
+                        previousSpokenDelay >= STATION_DELAY_ANNOUNCEMENT_MINUTES
+                    ) {
                         // Zgodnie z założeniem: gdy opóźnienie znika, zamiast komunikatu
                         // „opóźnienie zlikwidowane” odtwarzamy zwykłą zapowiedź pociągu.
                         playGongAndSpeak(buildStationStandardAnnouncement(t), stationVoice);
                         t.lastDelaySpoken = 0;
                         standardAnnouncementPlayedThisCycle = true;
                         console.log(`[STACJA] ${t.trainName} wrócił do rozkładu – standardowa zapowiedź.`);
-                    } else if (previousSpokenDelay === null && t.delayMin === 0) {
-                        t.lastDelaySpoken = 0;
+                    } else if (t.delayMin < STATION_DELAY_ANNOUNCEMENT_MINUTES) {
+                        // Zmianę 1–4 min zapamiętujemy bez komunikatu. Dzięki temu
+                        // przekroczenie progu 5 minut zostanie później wykryte prawidłowo.
+                        t.lastDelaySpoken = t.delayMin;
                     }
                 }
 
@@ -1055,7 +2782,7 @@ function startStationLiveTracking() {
                 const timeDiffMinutes = (targetTime - now) / 60000;
 
                 let shouldAnnounceArrival = false;
-                if (!t.announced && !t.cancelled && t.gpsStatus === 'Oczekuje') {
+                if (t.seenOnMap && !t.announced && !t.cancelled && t.gpsStatus === 'Oczekuje') {
                     if (Number.isFinite(t.currentDist)) {
                         // GPS ma pierwszeństwo przed zegarem. Nie blokujemy zapowiedzi tylko dlatego,
                         // że według rozkładu godzina przyjazdu już minęła.
@@ -1081,12 +2808,14 @@ function startStationLiveTracking() {
                             );
                         } else {
                             let speech = buildStationStandardAnnouncement(t);
-                            if (t.delayMin > 0) {
+                            if (t.delayMin >= STATION_DELAY_ANNOUNCEMENT_MINUTES) {
                                 // Zapowiedź przyjazdu opóźnionego pociągu pozostaje standardową
-                                // zapowiedzią przyjazdu, ale jasno informuje, że pociąg jest opóźniony.
+                                // zapowiedzią przyjazdu, ale od progu 5 minut jasno informuje,
+                                // że pociąg jest opóźniony.
                                 const { trainType, reservationSuffix, number, viaText } = getStationTrainSpeechInfo(t);
                                 const time = formatServerTimeStr(t.actualArrTime);
-                                speech = `Opóźniony ${trainType} ${number} do stacji ${t.destination}${viaText}, przyjedzie o godzinie ${time}.${reservationSuffix} Prosimy zachować ostrożność i nie zbliżać się do krawędzi peronu.`;
+                                const locationSpeech = buildStationLocationSpeech(t, false);
+                                speech = `Opóźniony ${trainType} ${number} do stacji ${t.destination}${viaText}, przyjedzie o godzinie ${time}.${locationSpeech}${reservationSuffix} Prosimy zachować ostrożność i nie zbliżać się do krawędzi peronu.`;
                             }
                             playGongAndSpeak(speech, stationVoice);
                         }
@@ -1096,33 +2825,40 @@ function startStationLiveTracking() {
                 const stopDuration = Math.max(0, t.actualDepTime - t.actualArrTime);
                 const timeDiffDepMinutes = (t.actualDepTime - now) / 60000;
 
-                if (!t.cancelled && !t.isPassing && stopDuration > 3 * 60000) {
+                if (t.seenOnMap && !t.cancelled && !t.isPassing && stopDuration > 3 * 60000) {
                     if (timeDiffDepMinutes <= 3 && timeDiffDepMinutes > 0 && !t.departureAnnounced) {
                         t.departureAnnounced = true;
                         const { trainType, number, viaText } = getStationTrainSpeechInfo(t);
                         const className = trainType.charAt(0).toUpperCase() + trainType.slice(1);
                         const formattedDep = formatServerTimeStr(t.actualDepTime);
-                        playGongAndSpeak(`${className}, ${number} do stacji ${t.destination}${viaText}, odjedzie o godzinie ${formattedDep}.`, stationVoice);
+                        const locationSpeech = buildStationLocationSpeech(t, true);
+                        playGongAndSpeak(`${className}, ${number} do stacji ${t.destination}${viaText}, odjedzie o godzinie ${formattedDep}.${locationSpeech}`, stationVoice);
                     }
                 }
 
                 let isPhysicallyDeparted = false;
-                if (t.gpsStatus === 'Odjechał') {
+                if (t.seenOnMap && t.gpsStatus === 'Odjechał') {
                     isPhysicallyDeparted = true;
-                } else if (now > t.actualDepTime + STATION_DEPARTURE_FALLBACK_MS && t.gpsStatus !== 'Na stacji') {
+                } else if (t.seenOnMap && now > t.actualDepTime + STATION_DEPARTURE_FALLBACK_MS && t.gpsStatus !== 'Na stacji') {
                     // Fallback czasowy tylko z marginesem 3 min, a nie natychmiast po godzinie odjazdu.
                     isPhysicallyDeparted = true;
                 }
 
                 if (isPhysicallyDeparted && !t.departedAdded && !t.cancelled) {
                     if (t.departedAt === 0) t.departedAt = now;
-                    departedHistory.push({ ...t, departedAt: t.departedAt });
+                    // Przejazd bez zatrzymania nie jest odjazdem pasażerskim i nie
+                    // powinien pojawiać się w oknie „Pociągi odjechane”.
+                    if (!t.isPassing) departedHistory.push({ ...t, departedAt: t.departedAt });
                     t.departedAdded = true;
                 }
             }
 
             stationTimetable = stationTimetable.filter(t => {
-                if (t.cancelled) return now <= t.cancelledTime + 2 * 60000;
+                if (t.cancelled) {
+                    const keepOnBoard = now <= t.cancelledTime + 2 * 60000;
+                    if (!keepOnBoard && t.journeyId) knownJourneyIds.delete(t.journeyId);
+                    return keepOnBoard;
+                }
                 if (t.departedAdded) return now <= t.departedAt + 60000;
                 return true;
             });
@@ -1132,8 +2868,20 @@ function startStationLiveTracking() {
             if (document.getElementById('departed-modal').style.display === 'flex') {
                 renderDepartedModal();
             }
+            if (document.getElementById('cancelled-modal').style.display === 'flex') {
+                renderCancelledModal();
+            }
         } catch (err) {
             console.error('[STACJA] Błąd śledzenia tablicy stacyjnej:', err);
+            if (err?.code === 'STALE_API_DATA' || err?.code === 'API_TIMEOUT' || err?.code === 'API_HTTP_ERROR') {
+                const tbody = document.getElementById('station-departures-body');
+                if (tbody) {
+                    const text = err?.code === 'STALE_API_DATA'
+                        ? 'Dane API są nieaktualne. Wstrzymano odświeżanie tablicy, aby nie pokazywać starego rozkładu.'
+                        : 'Brak aktualnego połączenia z API. Oczekiwanie na ponowne połączenie...';
+                    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#ff5252;">${text}</td></tr>`;
+                }
+            }
         }
     }, STATION_REFRESH_MS);
 }
@@ -1145,7 +2893,6 @@ async function loadTrainsForOnboard(serverCode) {
     try {
         const sData = serversMap[serverCode];
         currentServerId = sData.id;
-        activeServerUtcOffset = sData.utcOffsetHours;
         activeServerPcToServerDelta = sData.pcToServerDelta;
         
         if (!currentServerId) return;
@@ -1175,8 +2922,7 @@ async function loadTrainsForOnboard(serverCode) {
             return;
         }
 
-        const passengerTrainTypes = ["NATIONAL_EXPRESS_TRAIN", "INTER_NATIONAL_EXPRESS_TRAIN", "INTER_REGIONAL_EXPRESS_TRAIN", "INTER_REGIONAL_TRAIN", "REGIONAL_FAST_TRAIN", "REGIONAL_TRAIN"];
-        const passengerTrains = trains.filter(t => passengerTrainTypes.includes(t.originEvent?.transport?.type));
+        const passengerTrains = trains.filter(isPassengerActiveTrain);
 
         if (passengerTrains.length === 0) {
             trainSearch.placeholder = 'Brak pociągów pasażerskich';
@@ -1215,7 +2961,12 @@ async function loadTrainsForOnboard(serverCode) {
         
         renderTrainOptions(); 
     } catch (err) {
-        trainSearch.placeholder = 'Błąd sieci';
+        console.error('[MASZYNISTA] Błąd pobierania listy pociągów:', err);
+        trainSearch.placeholder = err?.code === 'STALE_API_DATA' ? 'API zwraca nieaktualne dane' : 'Błąd API';
+        trainSelect.innerHTML = `<option value="">${err?.code === 'STALE_API_DATA' ? 'Nieaktualne dane API' : 'Brak połączenia z API'}</option>`;
+        trainSelect.disabled = true;
+        trainTypeFilter.disabled = true;
+        startBtn.disabled = true;
         refreshTrainsBtn.disabled = false;
     }
 }
@@ -1232,10 +2983,7 @@ function renderTrainOptions(filterText = '') {
         if (!t.label.toLowerCase().includes(lowerFilter)) return false;
         const info = t.trainInfo.toUpperCase();
         
-        let isExpress = false;
-        if (info.includes("EIP") || info.includes("MPE") || (["NATIONAL_EXPRESS_TRAIN", "INTER_NATIONAL_EXPRESS_TRAIN"].includes(t.type) && !info.includes("EIJ") && !info.includes("ŁS"))) {
-            isExpress = true;
-        }
+        const isExpress = isExpressTrainForUi(t.type, info);
 
         if (typeFilter === 'EXPRESS' && !isExpress) return false;
         if (typeFilter === 'REGIONAL' && isExpress) return false;
@@ -1330,6 +3078,15 @@ function renderRouteUIOnboard(routeArray) {
     adjustRouteFontsOnboard();
 }
 
+const ONBOARD_NEXT_STATION_DISTANCE_LONG_DISTANCE_METERS = 500;
+const ONBOARD_NEXT_STATION_DISTANCE_REGIONAL_METERS = 200;
+
+function getOnboardNextStationAnnouncementDistanceMeters() {
+    return activeTrainType === 'REGIONAL_TRAIN'
+        ? ONBOARD_NEXT_STATION_DISTANCE_REGIONAL_METERS
+        : ONBOARD_NEXT_STATION_DISTANCE_LONG_DISTANCE_METERS;
+}
+
 async function startOnboardMode() {
     activeJourneyId = trainSelect.value;
     const selectedOption = trainSelect.options[trainSelect.selectedIndex];
@@ -1337,7 +3094,7 @@ async function startOnboardMode() {
     activeDestination = selectedOption.dataset.destination;
     
     const trainInfoText = selectedOption.dataset.trainInfo.toUpperCase();
-    if (trainInfoText.includes("EIP") || trainInfoText.includes("MPE") || (["NATIONAL_EXPRESS_TRAIN", "INTER_NATIONAL_EXPRESS_TRAIN"].includes(selectedOption.dataset.type) && !trainInfoText.includes("EIJ") && !trainInfoText.includes("ŁS"))) {
+    if (isExpressTrainForUi(selectedOption.dataset.type, trainInfoText)) {
         activeTrainType = "NATIONAL_EXPRESS_TRAIN";
     } else {
         activeTrainType = "REGIONAL_TRAIN";
@@ -1381,24 +3138,21 @@ async function loadJourneyRouteOnboard(journeyId, trainLat, trainLon) {
         
         if (journeyData.events && journeyData.events.length > 0) {
             journeyData.events.forEach((ev) => {
-                if (ev.stopPlace && ev.stopPlace.name && ev.stopType === "PASSENGER") {
+                if (ev.stopPlace && ev.stopPlace.name && isCommercialStationStopEvent(ev)) {
                     const name = ev.stopPlace.name;
                     if (!stationsMap.has(name)) {
                         stationsMap.set(name, { station: name, lat: ev.stopPlace.position.latitude, lon: ev.stopPlace.position.longitude, arrivalTime: null, departureTime: null, delayMin: 0 });
                     }
                     const st = stationsMap.get(name);
-                    let delay = 0;
-                    if (ev.realtimeTime && ev.scheduledTime) {
-                        delay = Math.floor((new Date(ev.realtimeTime).getTime() - new Date(ev.scheduledTime).getTime()) / 60000); 
-                        if (delay < 1) delay = 0; 
-                    }
+                    const signedDelay = getSignedStationEventDelayMinutes(ev);
+                    const delay = signedDelay === null ? 0 : Math.max(0, signedDelay);
                     if (ev.type === "ARRIVAL") {
                         st.arrivalTime = formatServerTimeStr(ev.realtimeTime || ev.scheduledTime);
-                        st.rawTime = new Date(ev.realtimeTime || ev.scheduledTime).getTime();
+                        st.rawTime = toTimestamp(ev.realtimeTime || ev.scheduledTime);
                         st.delayMin = delay;
                     } else if (ev.type === "DEPARTURE") {
                         st.departureTime = formatServerTimeStr(ev.realtimeTime || ev.scheduledTime);
-                        if (!st.rawTime) st.rawTime = new Date(ev.realtimeTime || ev.scheduledTime).getTime();
+                        if (!st.rawTime) st.rawTime = toTimestamp(ev.realtimeTime || ev.scheduledTime);
                         st.delayMin = delay; 
                     }
                 }
@@ -1425,7 +3179,8 @@ async function loadJourneyRouteOnboard(journeyId, trainLat, trainLon) {
                     }
                     if (activeIdx > 0) {
                         const distFromPrev = getDistanceFromLatLonInMeters(trainLat, trainLon, targetStationList[activeIdx-1].lat, targetStationList[activeIdx-1].lon);
-                        if (distFromPrev >= 500) targetStationList[activeIdx].departureAnnounced = true;
+                        const nextStationAnnouncementDistance = getOnboardNextStationAnnouncementDistanceMeters();
+                        if (distFromPrev >= nextStationAnnouncementDistance) targetStationList[activeIdx].departureAnnounced = true;
                         if (distFromPrev >= 2000) targetStationList[activeIdx].warsAnnounced = true;
                     }
                 }
@@ -1479,14 +3234,11 @@ function startOnboardLiveTracking() {
                     );
                     if (journeyData.events) {
                         journeyData.events.forEach(ev => {
-                            if (ev.stopPlace && ev.stopPlace.name && ev.stopType === "PASSENGER") {
+                            if (ev.stopPlace && ev.stopPlace.name && isCommercialStationStopEvent(ev)) {
                                 const st = targetStationList.find(s => s.station === ev.stopPlace.name);
                                 if (st) {
-                                    let newDelay = 0;
-                                    if (ev.realtimeTime && ev.scheduledTime) {
-                                        newDelay = Math.floor((new Date(ev.realtimeTime).getTime() - new Date(ev.scheduledTime).getTime()) / 60000);
-                                        if (newDelay < 1) newDelay = 0;
-                                    }
+                                    const signedDelay = getSignedStationEventDelayMinutes(ev);
+                                    const newDelay = signedDelay === null ? 0 : Math.max(0, signedDelay);
                                     st.delayMin = newDelay;
                                     if(ev.type === "ARRIVAL") st.arrivalTime = formatServerTimeStr(ev.realtimeTime || ev.scheduledTime);
                                     if(ev.type === "DEPARTURE") st.departureTime = formatServerTimeStr(ev.realtimeTime || ev.scheduledTime);
@@ -1515,7 +3267,8 @@ function startOnboardLiveTracking() {
             if (targetStationIndex > 0) {
                 const prevStation = targetStationList[targetStationIndex - 1];
                 const distFromPrev = getDistanceFromLatLonInMeters(currentLat, currentLon, prevStation.lat, prevStation.lon);
-                if (distFromPrev >= 500 && !targetStation.departureAnnounced && !targetStation.arrivalPlayed) {
+                const nextStationAnnouncementDistance = getOnboardNextStationAnnouncementDistanceMeters();
+                if (distFromPrev >= nextStationAnnouncementDistance && !targetStation.departureAnnounced && !targetStation.arrivalPlayed) {
                     targetStation.departureAnnounced = true;
                     const nextMsg = currentIsIntercity ? `Witamy Państwa na pokładzie pociągu intercity do stacji ${activeDestination}. Następna stacja ${targetStation.station}.` : `Następna stacja. ${targetStation.station}. Stacja docelowa. ${activeDestination}.`;
                     speakText(nextMsg, assignedVoice);

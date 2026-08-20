@@ -37,11 +37,20 @@ function writeLog(message, error = null) {
   }
 }
 
+function getAppIconPath() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'icon.ico');
+  }
+
+  return path.join(__dirname, 'build', 'icon.ico');
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
     autoHideMenuBar: true,
+    icon: getAppIconPath(),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -157,6 +166,11 @@ function setupAutoUpdater() {
 app.whenReady().then(() => {
   writeLog(`Aplikacja uruchomiona. Wersja: ${app.getVersion()}`);
 
+  // Zapewnia prawidłowe grupowanie i ikonę aplikacji na pasku zadań Windows.
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.simrailsip.app');
+  }
+
   // Nie pozwalamy Windows/Electronowi usypiać procesu podczas śledzenia pociągu.
   // Ekran nadal może się normalnie wygasić.
   powerBlockerId = powerSaveBlocker.start('prevent-app-suspension');
@@ -196,6 +210,10 @@ app.on('window-all-closed', () => {
 // ==========================================
 // TTS W PROCESIE GŁÓWNYM
 // ==========================================
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
+});
+
 // Renderer nie dostaje już ścieżki do pliku TEMP.
 // main.js:
 // 1. generuje MP3,

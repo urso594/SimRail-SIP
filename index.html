@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="watermark">Made by Urso V2.0.1</div>
+    <div class="watermark">Made by Urso V2.1.0</div>
 
     <div id="setup-screen" class="setup-container">
         <h1>System Informacji Pasażerskiej</h1>
@@ -18,6 +18,7 @@
                 <select id="server-select">
                     <option value="">Ładowanie...</option>
                 </select>
+                <button id="favorite-server-btn" class="icon-btn favorite-btn" type="button" title="Dodaj wybrany serwer do ulubionych" disabled>☆</button>
                 <button id="refresh-servers-btn" class="icon-btn" title="Odśwież listę serwerów">↻</button>
             </div>
         </div>
@@ -47,6 +48,10 @@
 
         <div id="station-setup" class="form-group" style="display: none;">
             <label>Wybierz stację:</label>
+            <div class="station-search-row">
+                <input type="text" id="station-search" placeholder="Wpisz nazwę by przefiltrować..." autocomplete="off" disabled>
+                <button id="favorite-station-btn" class="icon-btn favorite-btn" type="button" title="Dodaj wybraną stację do ulubionych" disabled>☆</button>
+            </div>
             <select id="station-select" disabled>
                 <option value="">-- Wybierz serwer najpierw --</option>
             </select>
@@ -73,6 +78,11 @@
                     <div class="volume-panel hidden">
                         <label>Głośność komunikatów</label>
                         <input type="range" class="volume-slider" min="0" max="1" step="0.1" value="1">
+                        <label class="settings-toggle-row">
+                            <input class="random-station-announcements-toggle" type="checkbox" checked>
+                            <span>Losowe komunikaty co 5 minut</span>
+                        </label>
+                        <button type="button" class="settings-action-btn whats-new-btn">Co nowego?</button>
                     </div>
                 </div>
             </div>
@@ -104,7 +114,10 @@
                 <div class="plk-station-name">STACJA: ---</div>
             </div>
             <div class="plk-right">
-                <button id="departed-btn" class="icon-btn" style="width:auto; padding: 0 15px; font-size:16px; margin-right: 20px;">Pociągi które odjechały</button>
+                <div class="station-history-actions">
+                    <button id="departed-btn" class="icon-btn station-history-btn" type="button">Pociągi odjechane</button>
+                    <button id="cancelled-btn" class="icon-btn station-history-btn" type="button">Pociągi odwołane</button>
+                </div>
                 <div class="clock plk-clock">00<span class="blink">:</span>00</div>
                 <div class="settings-container-inline" style="margin-left: 20px;">
                     <button class="settings-btn plk-settings" title="Ustawienia">
@@ -113,6 +126,11 @@
                     <div class="volume-panel hidden">
                         <label>Głośność komunikatów</label>
                         <input type="range" class="volume-slider" min="0" max="1" step="0.1" value="1">
+                        <label class="settings-toggle-row">
+                            <input class="random-station-announcements-toggle" type="checkbox" checked>
+                            <span>Losowe komunikaty co 5 minut</span>
+                        </label>
+                        <button type="button" class="settings-action-btn whats-new-btn">Co nowego?</button>
                     </div>
                 </div>
             </div>
@@ -142,6 +160,44 @@
             <h2>Pociągi, które odjechały</h2>
             <ul id="departed-list"></ul>
             <button id="close-modal" class="mode-btn">Zamknij</button>
+        </div>
+    </div>
+
+    <!-- MODAL - POCIĄGI ODWOŁANE -->
+    <div id="cancelled-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="cancelled-modal-title">
+        <div class="modal-content">
+            <h2 id="cancelled-modal-title">Pociągi odwołane</h2>
+            <ul id="cancelled-list"></ul>
+            <button id="close-cancelled-modal" class="mode-btn" type="button">Zamknij</button>
+        </div>
+    </div>
+
+    <!-- MODAL - CO NOWEGO -->
+    <div id="whats-new-modal" class="modal whats-new-modal hidden" role="dialog" aria-modal="true" aria-labelledby="whats-new-title">
+        <div class="modal-content whats-new-content">
+            <button id="close-whats-new-icon" class="whats-new-close-icon" type="button" aria-label="Zamknij okno">&times;</button>
+            <div class="whats-new-heading">
+                <span id="whats-new-version" class="whats-new-version">Wersja 2.1.0</span>
+                <h2 id="whats-new-title">Co nowego w SimRail SIP?</h2>
+                <p>Najważniejsze zmiany i usprawnienia w tej wersji programu.</p>
+            </div>
+            <ul class="whats-new-list">
+                <li><strong>Pasek zapowiedzi:</strong> aktualnie odtwarzany komunikat przesuwa się na dole ekranu stacyjnego.</li>
+                <li><strong>Perony i tory:</strong> tablica oraz zapowiedzi uwzględniają miejsce zatrzymania pociągu.</li>
+                <li><strong>Postoje handlowe:</strong> tablica stacyjna pokazuje wyłącznie pociągi dostępne dla pasażerów i pomija postoje techniczne.</li>
+                <li><strong>Pełny rozkład stacyjny:</strong> pociągi pojawiają się na tablicy jeszcze przed uruchomieniem ich na mapie.</li>
+                <li><strong>Historia odwołań:</strong> skład, który był widoczny i zniknął, otrzymuje status odwołanego i trafia do osobnej historii.</li>
+                <li><strong>Ulubione:</strong> wybrane serwery i stacje można przypiąć na górze listy.</li>
+                <li><strong>Dokładniejsze opóźnienia:</strong> dane są pobierane dla wybranej stacji, komunikaty są odtwarzane dopiero od 5 minut opóźnienia, zastane opóźnienia nie są odczytywane seryjnie, a zapowiedź zmiany opóźnienia nie podaje przedwcześnie peronu ani toru.</li>
+                <li><strong>Lepsze rozpoznawanie pociągów:</strong> pociągi towarowe nie trafiają na tablicę, ale ich przejazd bez zatrzymania uruchamia ostrzeżenie; postoje techniczne pozostają pomijane. Składy EIJ Pendolino i ŁKA są prawidłowo rozróżniane.</li>
+                <li><strong>Komunikaty informacyjne:</strong> w trybie stacyjnym mogą być automatycznie odtwarzane co 5 minut; funkcję można wyłączyć w ustawieniach.</li>
+                <li><strong>Zapowiedzi pokładowe:</strong> następna stacja jest zapowiadana 500 m za poprzednią stacją w pociągach dalekobieżnych oraz 200 m za poprzednią stacją w pociągach regionalnych.</li>
+                <li><strong>Kontrola API:</strong> program wykrywa nieaktualne dane i pokazuje czytelny, zwijany status połączenia.</li>
+                <li><strong>Czas serwera:</strong> zegar i godziny rozkładu pozostają zgodne również na serwerach działających w innej strefie i na innej dacie symulacji.</li>
+                <li><strong>Ikona aplikacji:</strong> właściwa ikona SimRail SIP jest osadzana w programie, instalatorze, skrótach i na pasku zadań.</li>
+                <li><strong>Okno „Co nowego”:</strong> lista zmian pojawia się po aktualizacji i pozostaje dostępna w ustawieniach.</li>
+            </ul>
+            <button id="close-whats-new" class="mode-btn whats-new-confirm" type="button">Rozumiem</button>
         </div>
     </div>
 
