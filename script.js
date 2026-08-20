@@ -1,7 +1,7 @@
 const { ipcRenderer } = require('electron');
 
-const APP_BUILD_TAG = 'api-health-false-alarm-fix-2026-08-20-22';
-console.log(`[SimRail SIP] Build: ${APP_BUILD_TAG}`);
+const APP_BUILD_TAG = 'product-name-release-2.1.2-2026-08-20-24';
+console.log(`[SimRail SIP by Urso] Build: ${APP_BUILD_TAG}`);
 
 // ==========================================
 // 1. ZEGAR, GŁOŚNOŚĆ I WSPÓLNY INTERFEJS
@@ -141,7 +141,7 @@ volumePanels.forEach((panel) => {
 });
 
 const CHANGELOG_STORAGE_KEY = 'simrail-sip:last-shown-changelog-version';
-const CHANGELOG_FALLBACK_VERSION = '2.1.1';
+const CHANGELOG_FALLBACK_VERSION = '2.1.2';
 const whatsNewModal = document.getElementById('whats-new-modal');
 const whatsNewVersion = document.getElementById('whats-new-version');
 const closeWhatsNewButton = document.getElementById('close-whats-new');

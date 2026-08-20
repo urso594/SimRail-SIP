@@ -112,8 +112,8 @@ function setupAutoUpdater() {
     try {
       const result = await dialog.showMessageBox(mainWindow || undefined, {
         type: 'info',
-        title: 'Aktualizacja SimRail SIP',
-        message: `Pobrano nową wersję SimRail SIP ${info.version}.`,
+        title: 'Aktualizacja SimRail SIP by Urso',
+        message: `Pobrano nową wersję SimRail SIP by Urso ${info.version}.`,
         detail: 'Czy chcesz teraz zamknąć program i zainstalować aktualizację?',
         buttons: ['Zainstaluj teraz', 'Później'],
         defaultId: 0,

@@ -1,6 +1,6 @@
-Umowa Licencyjna Użytkownika Końcowego (EULA)
+Umowa Licencyjna Użytkownika Końcowego (EULA) – SimRail SIP by Urso
 
-Niniejsza Umowa Licencyjna Użytkownika Końcowego („Umowa”) jest prawnie wiążącą umową pomiędzy Tobą („Użytkownikiem”) a twórcą oprogramowania („Licencjodawcą”) dotyczącą korzystania z aplikacji SimRail SIP („Program”).
+Niniejsza Umowa Licencyjna Użytkownika Końcowego („Umowa”) jest prawnie wiążącą umową pomiędzy Tobą („Użytkownikiem”) a twórcą oprogramowania („Licencjodawcą”) dotyczącą korzystania z aplikacji SimRail SIP by Urso („Program”).
 
 Instalując, kopiując lub w inny sposób korzystając z Programu, wyrażasz zgodę na warunki niniejszej Umowy. Jeśli nie akceptujesz warunków niniejszej Umowy, nie instaluj ani nie używaj Programu.
 
