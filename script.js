@@ -1,6 +1,6 @@
 const { ipcRenderer } = require('electron');
 
-const APP_BUILD_TAG = 'server-timeline-schedule-fix-2026-08-19-21';
+const APP_BUILD_TAG = 'api-health-false-alarm-fix-2026-08-20-22';
 console.log(`[SimRail SIP] Build: ${APP_BUILD_TAG}`);
 
 // ==========================================
@@ -141,7 +141,7 @@ volumePanels.forEach((panel) => {
 });
 
 const CHANGELOG_STORAGE_KEY = 'simrail-sip:last-shown-changelog-version';
-const CHANGELOG_FALLBACK_VERSION = '2.1.0';
+const CHANGELOG_FALLBACK_VERSION = '2.1.1';
 const whatsNewModal = document.getElementById('whats-new-modal');
 const whatsNewVersion = document.getElementById('whats-new-version');
 const closeWhatsNewButton = document.getElementById('close-whats-new');
@@ -426,16 +426,16 @@ function getServerClockInfo(server) {
 
     // W API SIT utcOffsetHours nie oznacza wyłącznie strefy czasowej. Dla serwerów
     // działających na innej dacie zawiera pełne przesunięcie osi czasu symulacji,
-    // np. kilka tysięcy godzin. Budujemy z niego aktualny czas serwera, ale nigdy
-    // nie dodajemy tej wartości ponownie do godzin zapisanych w rozkładzie.
+    // np. kilka tysięcy godzin. Używamy go do ustawienia czasu aplikacji, ale nie
+    // traktujemy lastUpdated jako tykającego zegara. To pole może pozostawać stałe,
+    // mimo że pozycje pociągów są nadal prawidłowo odświeżane.
     const timelineOffsetHours = Number(server.utcOffsetHours);
     if (Number.isFinite(timelineOffsetHours)) {
-        const realReferenceMs = parseApiTimestamp(server.lastUpdated) || Date.now();
         const delta = timelineOffsetHours * 3600000;
 
         return {
             delta,
-            serverMs: realReferenceMs + delta,
+            serverMs: null,
             source: 'utcOffsetHours'
         };
     }
@@ -638,6 +638,16 @@ async function refreshSelectedServerClockHealth(force = false) {
     const observation = observeServerClock(activeServerCode, clockInfo.serverMs);
     const updated = serverClockStateByServer.get(activeServerCode);
     if (updated) updated.lastFetchAt = nowReal;
+
+    // Przesunięcie osi czasu może zmienić się po restarcie lub przestawieniu
+    // symulacji. Aktualizujemy je niezależnie od tego, czy API udostępnia osobny,
+    // możliwy do obserwowania zegar serwera.
+    if (clockInfo.source === 'utcOffsetHours') {
+        activeServerPcToServerDelta = clockInfo.delta;
+        if (serversMap[activeServerCode]) {
+            serversMap[activeServerCode].pcToServerDelta = activeServerPcToServerDelta;
+        }
+    }
 
     // Dopasowujemy zegar aplikacji do NOWEGO odczytu tylko wtedy, gdy jest to
     // pierwszy odczyt albo API faktycznie podało inną wartość. Przy zamrożonym
