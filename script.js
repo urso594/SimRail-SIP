@@ -1,6 +1,6 @@
 const { ipcRenderer } = require('electron');
 
-const APP_BUILD_TAG = 'product-name-release-2.1.2-2026-08-20-24';
+const APP_BUILD_TAG = 'onboard-timetable-release-2.1.3-2026-08-21-26';
 console.log(`[SimRail SIP by Urso] Build: ${APP_BUILD_TAG}`);
 
 // ==========================================
@@ -141,7 +141,7 @@ volumePanels.forEach((panel) => {
 });
 
 const CHANGELOG_STORAGE_KEY = 'simrail-sip:last-shown-changelog-version';
-const CHANGELOG_FALLBACK_VERSION = '2.1.2';
+const CHANGELOG_FALLBACK_VERSION = '2.1.3';
 const whatsNewModal = document.getElementById('whats-new-modal');
 const whatsNewVersion = document.getElementById('whats-new-version');
 const closeWhatsNewButton = document.getElementById('close-whats-new');
@@ -3014,6 +3014,7 @@ function renderTrainOptions(filterText = '') {
             opt.dataset.trainInfo = t.trainInfo;
             opt.dataset.destination = t.destination;
             opt.dataset.type = t.type;
+            opt.dataset.rawNumber = t.rawNumber;
             trainSelect.appendChild(opt);
         });
     }
@@ -3061,6 +3062,15 @@ function adjustRouteFontsOnboard() {
         });
     }, 50);
 }
+
+function getOnboardStopDelayMinutes(stop) {
+    const preferredDelay = stop.state === 'at-station'
+        ? (stop.departureDelayMin ?? stop.arrivalDelayMin)
+        : (stop.arrivalDelayMin ?? stop.departureDelayMin);
+
+    return normalizeDelayMinutes(preferredDelay ?? stop.delayMin);
+}
+
 function renderRouteUIOnboard(routeArray) {
     const routeListContainer = document.querySelector('.route-list ul');
     const mainTime = document.querySelector('.eta .time');
@@ -3081,7 +3091,8 @@ function renderRouteUIOnboard(routeArray) {
 
         if (stop.state === 'approaching' || stop.state === 'at-station') {
             updateMainStationNameOnboard(stop.station); 
-            const delayStr = stop.delayMin > 0 ? ` <span style="color:#ff4444">(+${stop.delayMin} min)</span>` : '';
+            const delayMinutes = getOnboardStopDelayMinutes(stop);
+            const delayStr = delayMinutes > 0 ? ` <span style="color:#ff4444">(+${delayMinutes} min)</span>` : '';
             mainTime.innerHTML = `${stop.state === 'at-station' ? (stop.departureTime || stop.time) : (stop.arrivalTime || stop.time)}${delayStr}`;
         }
     });
@@ -3095,6 +3106,106 @@ function getOnboardNextStationAnnouncementDistanceMeters() {
     return activeTrainType === 'REGIONAL_TRAIN'
         ? ONBOARD_NEXT_STATION_DISTANCE_REGIONAL_METERS
         : ONBOARD_NEXT_STATION_DISTANCE_LONG_DISTANCE_METERS;
+}
+
+function normalizeOnboardTimetableText(value) {
+    return String(value || '')
+        .normalize('NFKC')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+}
+
+function getFullTimetableFirstTime(train) {
+    const firstTimedPoint = (train?.timetable || []).find(row => row?.departureTime || row?.arrivalTime);
+    return toTimestamp(firstTimedPoint?.departureTime || firstTimedPoint?.arrivalTime);
+}
+
+function findFullTimetableForOnboardJourney(fullTimetable, journeyData, selectedTrainNumber = '') {
+    if (!Array.isArray(fullTimetable) || !Array.isArray(journeyData?.events)) return null;
+
+    const stopEvents = journeyData.events.filter(ev => ev?.stopPlace?.name);
+    if (stopEvents.length === 0) return null;
+
+    const journeyTrainNumber = String(
+        selectedTrainNumber ||
+        stopEvents.find(ev => ev?.transport?.number)?.transport?.number ||
+        ''
+    ).trim();
+
+    if (!journeyTrainNumber) return null;
+
+    const originName = normalizeOnboardTimetableText(stopEvents[0].stopPlace.name);
+    const destinationName = normalizeOnboardTimetableText(stopEvents[stopEvents.length - 1].stopPlace.name);
+    const firstJourneyTime = toTimestamp(
+        stopEvents.find(ev => ev?.scheduledTime)?.scheduledTime
+    );
+
+    let candidates = fullTimetable.filter(train => {
+        if (String(train?.trainNoLocal || '').trim() === journeyTrainNumber) return true;
+
+        return (train?.timetable || []).some(row =>
+            String(row?.displayedTrainNumber || '').trim() === journeyTrainNumber
+        );
+    });
+
+    if (candidates.length === 0) return null;
+
+    const exactRouteCandidates = candidates.filter(train =>
+        normalizeOnboardTimetableText(train?.startStation) === originName &&
+        normalizeOnboardTimetableText(train?.endStation) === destinationName
+    );
+
+    if (exactRouteCandidates.length > 0) candidates = exactRouteCandidates;
+
+    candidates.sort((a, b) => {
+        const aStart = getFullTimetableFirstTime(a);
+        const bStart = getFullTimetableFirstTime(b);
+        const aGap = firstJourneyTime !== null && aStart !== null
+            ? Math.abs(aStart - firstJourneyTime)
+            : Number.MAX_SAFE_INTEGER;
+        const bGap = firstJourneyTime !== null && bStart !== null
+            ? Math.abs(bStart - firstJourneyTime)
+            : Number.MAX_SAFE_INTEGER;
+
+        return aGap - bGap;
+    });
+
+    return candidates[0] || null;
+}
+
+function buildFullTimetableStopMap(train) {
+    const stops = new Map();
+
+    for (const row of train?.timetable || []) {
+        const names = [row?.nameOfPoint, row?.nameForPerson]
+            .map(normalizeOnboardTimetableText)
+            .filter(Boolean);
+
+        names.forEach(name => {
+            if (!stops.has(name)) stops.set(name, row);
+        });
+    }
+
+    return stops;
+}
+
+function getOnboardPlannedEventTime(event, fullTimetableStop) {
+    const fullTimetableTime = event?.type === 'ARRIVAL'
+        ? fullTimetableStop?.arrivalTime
+        : fullTimetableStop?.departureTime;
+
+    return fullTimetableTime || event?.scheduledTime || event?.realtimeTime || null;
+}
+
+function getOnboardEventDelayMinutes(event, plannedTime) {
+    const realtimeMs = toTimestamp(event?.realtimeTime);
+    const plannedMs = toTimestamp(plannedTime || event?.scheduledTime);
+
+    if (realtimeMs === null || plannedMs === null) return 0;
+
+    const delay = Math.round((realtimeMs - plannedMs) / 60000);
+    return Number.isFinite(delay) ? Math.max(0, delay) : 0;
 }
 
 async function startOnboardMode() {
@@ -3134,16 +3245,41 @@ async function startOnboardMode() {
         console.error('[MASZYNISTA] Błąd pobrania początkowej pozycji pociągu:', err);
     }
 
-    await loadJourneyRouteOnboard(activeJourneyId, initialLat, initialLon);
+    await loadJourneyRouteOnboard(
+        activeJourneyId,
+        initialLat,
+        initialLon,
+        selectedOption.dataset.rawNumber || ''
+    );
     startOnboardLiveTracking();
 }
 
-async function loadJourneyRouteOnboard(journeyId, trainLat, trainLon) {
+async function loadJourneyRouteOnboard(journeyId, trainLat, trainLon, selectedTrainNumber = '') {
     try {
-        const journeyData = await fetchJsonFresh(
-            `${API_BASE}/sit-journeys/v2/by-id/${journeyId}`,
-            'Trasa pociągu - start'
+        const [journeyData, fullTimetable] = await Promise.all([
+            fetchJsonFresh(
+                `${API_BASE}/sit-journeys/v2/by-id/${journeyId}`,
+                'Trasa pociągu - start'
+            ),
+            fetchFullServerTimetable(activeServerCode).catch(err => {
+                console.warn('[MASZYNISTA] Pełna rozkładówka jest chwilowo niedostępna. Używam planu z aktywnego pociągu:', err);
+                return null;
+            })
+        ]);
+
+        const matchedFullTimetable = findFullTimetableForOnboardJourney(
+            fullTimetable,
+            journeyData,
+            selectedTrainNumber
         );
+        const fullTimetableStops = buildFullTimetableStopMap(matchedFullTimetable);
+
+        if (matchedFullTimetable) {
+            console.log(`[MASZYNISTA] Godziny planowe pobrano z pełnej rozkładówki: ${matchedFullTimetable.trainNoLocal || selectedTrainNumber}.`);
+        } else {
+            console.warn('[MASZYNISTA] Nie dopasowano pełnej rozkładówki. Używam scheduledTime z aktywnego pociągu.');
+        }
+
         const stationsMap = new Map();
         
         if (journeyData.events && journeyData.events.length > 0) {
@@ -3151,25 +3287,68 @@ async function loadJourneyRouteOnboard(journeyId, trainLat, trainLon) {
                 if (ev.stopPlace && ev.stopPlace.name && isCommercialStationStopEvent(ev)) {
                     const name = ev.stopPlace.name;
                     if (!stationsMap.has(name)) {
-                        stationsMap.set(name, { station: name, lat: ev.stopPlace.position.latitude, lon: ev.stopPlace.position.longitude, arrivalTime: null, departureTime: null, delayMin: 0 });
+                        stationsMap.set(name, {
+                            station: name,
+                            lat: ev.stopPlace.position.latitude,
+                            lon: ev.stopPlace.position.longitude,
+                            arrivalTime: null,
+                            departureTime: null,
+                            plannedArrivalRawTime: null,
+                            plannedDepartureRawTime: null,
+                            realtimeArrivalRawTime: null,
+                            realtimeDepartureRawTime: null,
+                            arrivalDelayMin: null,
+                            departureDelayMin: null,
+                            delayMin: 0
+                        });
                     }
                     const st = stationsMap.get(name);
-                    const signedDelay = getSignedStationEventDelayMinutes(ev);
-                    const delay = signedDelay === null ? 0 : Math.max(0, signedDelay);
+                    const fullTimetableStop = fullTimetableStops.get(
+                        normalizeOnboardTimetableText(name)
+                    );
+                    const plannedTime = getOnboardPlannedEventTime(ev, fullTimetableStop);
+                    const delay = getOnboardEventDelayMinutes(ev, plannedTime);
+                    const realtimeTime = ev.realtimeTime || plannedTime;
+
                     if (ev.type === "ARRIVAL") {
-                        st.arrivalTime = formatServerTimeStr(ev.realtimeTime || ev.scheduledTime);
-                        st.rawTime = toTimestamp(ev.realtimeTime || ev.scheduledTime);
-                        st.delayMin = delay;
+                        st.arrivalTime = formatServerTimeStr(plannedTime);
+                        st.plannedArrivalRawTime = toTimestamp(plannedTime);
+                        st.realtimeArrivalRawTime = toTimestamp(realtimeTime);
+                        st.rawTime = st.realtimeArrivalRawTime || st.plannedArrivalRawTime;
+                        st.arrivalDelayMin = delay;
                     } else if (ev.type === "DEPARTURE") {
-                        st.departureTime = formatServerTimeStr(ev.realtimeTime || ev.scheduledTime);
-                        if (!st.rawTime) st.rawTime = toTimestamp(ev.realtimeTime || ev.scheduledTime);
-                        st.delayMin = delay; 
+                        st.departureTime = formatServerTimeStr(plannedTime);
+                        st.plannedDepartureRawTime = toTimestamp(plannedTime);
+                        st.realtimeDepartureRawTime = toTimestamp(realtimeTime);
+                        if (!st.rawTime) {
+                            st.rawTime = st.realtimeDepartureRawTime || st.plannedDepartureRawTime;
+                        }
+                        st.departureDelayMin = delay;
                     }
                 }
             });
             
             targetStationList = Array.from(stationsMap.values()).map(st => ({
-                station: st.station, time: st.arrivalTime || st.departureTime, arrivalTime: st.arrivalTime, departureTime: st.departureTime, rawTime: st.rawTime, lat: st.lat, lon: st.lon, delayMin: st.delayMin, current: false, arrivalPlayed: false, departureAnnounced: false, warsAnnounced: false, minDistance: Infinity, state: 'inactive'
+                station: st.station,
+                time: st.arrivalTime || st.departureTime,
+                arrivalTime: st.arrivalTime,
+                departureTime: st.departureTime,
+                plannedArrivalRawTime: st.plannedArrivalRawTime,
+                plannedDepartureRawTime: st.plannedDepartureRawTime,
+                realtimeArrivalRawTime: st.realtimeArrivalRawTime,
+                realtimeDepartureRawTime: st.realtimeDepartureRawTime,
+                arrivalDelayMin: st.arrivalDelayMin,
+                departureDelayMin: st.departureDelayMin,
+                rawTime: st.rawTime,
+                lat: st.lat,
+                lon: st.lon,
+                delayMin: st.arrivalDelayMin ?? st.departureDelayMin ?? 0,
+                current: false,
+                arrivalPlayed: false,
+                departureAnnounced: false,
+                warsAnnounced: false,
+                minDistance: Infinity,
+                state: 'inactive'
             }));
 
             if (targetStationList.length > 0) {
@@ -3247,11 +3426,19 @@ function startOnboardLiveTracking() {
                             if (ev.stopPlace && ev.stopPlace.name && isCommercialStationStopEvent(ev)) {
                                 const st = targetStationList.find(s => s.station === ev.stopPlace.name);
                                 if (st) {
-                                    const signedDelay = getSignedStationEventDelayMinutes(ev);
-                                    const newDelay = signedDelay === null ? 0 : Math.max(0, signedDelay);
-                                    st.delayMin = newDelay;
-                                    if(ev.type === "ARRIVAL") st.arrivalTime = formatServerTimeStr(ev.realtimeTime || ev.scheduledTime);
-                                    if(ev.type === "DEPARTURE") st.departureTime = formatServerTimeStr(ev.realtimeTime || ev.scheduledTime);
+                                    if (ev.type === "ARRIVAL") {
+                                        const plannedTime = st.plannedArrivalRawTime ?? ev.scheduledTime;
+                                        st.realtimeArrivalRawTime = toTimestamp(ev.realtimeTime || plannedTime);
+                                        st.arrivalDelayMin = getOnboardEventDelayMinutes(ev, plannedTime);
+                                    }
+
+                                    if (ev.type === "DEPARTURE") {
+                                        const plannedTime = st.plannedDepartureRawTime ?? ev.scheduledTime;
+                                        st.realtimeDepartureRawTime = toTimestamp(ev.realtimeTime || plannedTime);
+                                        st.departureDelayMin = getOnboardEventDelayMinutes(ev, plannedTime);
+                                    }
+
+                                    st.delayMin = getOnboardStopDelayMinutes(st);
                                     st.time = st.arrivalTime || st.departureTime;
                                 }
                             }

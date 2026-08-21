@@ -1,6 +1,6 @@
 {
   "name": "simrail-sip",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "SimRail SIP by Urso - System Informacji Pasażerskiej dla gry SimRail",
   "main": "main.js",
   "scripts": {

@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="watermark">SimRail SIP by Urso V2.1.2</div>
+    <div class="watermark">SimRail SIP by Urso V2.1.3</div>
 
     <div id="setup-screen" class="setup-container">
         <h1>SimRail SIP by Urso</h1>
@@ -115,7 +115,7 @@
             </div>
             <div class="plk-right">
                 <div class="station-history-actions">
-                    <button id="departed-btn" class="icon-btn station-history-btn" type="button">Pociągi odjechane</button>
+                    <button id="departed-btn" class="icon-btn station-history-btn" type="button">Odprawione Pociągi</button>
                     <button id="cancelled-btn" class="icon-btn station-history-btn" type="button">Pociągi odwołane</button>
                 </div>
                 <div class="clock plk-clock">00<span class="blink">:</span>00</div>
@@ -177,12 +177,13 @@
         <div class="modal-content whats-new-content">
             <button id="close-whats-new-icon" class="whats-new-close-icon" type="button" aria-label="Zamknij okno">&times;</button>
             <div class="whats-new-heading">
-                <span id="whats-new-version" class="whats-new-version">Wersja 2.1.2</span>
+                <span id="whats-new-version" class="whats-new-version">Wersja 2.1.3</span>
                 <h2 id="whats-new-title">Co nowego w SimRail SIP by Urso?</h2>
                 <p>Najważniejsze zmiany i usprawnienia w tej wersji programu.</p>
             </div>
             <ul class="whats-new-list">
-                <li><strong>Nowa nazwa programu:</strong> aplikacja działa teraz pod nazwą „SimRail SIP by Urso”, aby jednoznacznie odróżnić ją od innych projektów.</li>
+                <li><strong>Rozkład w trybie maszynisty:</strong> planowe godziny przyjazdu i odjazdu są teraz pobierane z pełnej rozkładówki serwera, dzięki czemu odpowiadają rozkładowi w grze. Bieżące dane nadal służą do obliczania opóźnienia i śledzenia pociągu.</li>
+                <li><strong>Historia pociągów:</strong> przycisk „Pociągi odjechane” otrzymał nazwę „Odprawione Pociągi”.</li>
             </ul>
             <button id="close-whats-new" class="mode-btn whats-new-confirm" type="button">Rozumiem</button>
         </div>
