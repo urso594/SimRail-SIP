@@ -1,6 +1,6 @@
 const { ipcRenderer } = require('electron');
 
-const APP_BUILD_TAG = 'onboard-timetable-release-2.1.3-2026-08-21-26';
+const APP_BUILD_TAG = 'api-outage-continuity-release-2.1.4-2026-08-25-28';
 console.log(`[SimRail SIP by Urso] Build: ${APP_BUILD_TAG}`);
 
 // ==========================================
@@ -50,6 +50,10 @@ const serverSelect = document.getElementById('server-select');
 const refreshServersBtn = document.getElementById('refresh-servers-btn');
 const startBtn = document.getElementById('start-btn');
 const backBtns = document.querySelectorAll('.back-btn');
+const onboardDataRefreshBtn = document.getElementById('onboard-data-refresh-btn');
+const stationDataRefreshBtn = document.getElementById('station-data-refresh-btn');
+const onboardApiWarning = document.getElementById('onboard-api-warning');
+const stationApiWarning = document.getElementById('station-api-warning');
 
 const settingsBtns = document.querySelectorAll('.settings-btn');
 const volumePanels = document.querySelectorAll('.volume-panel');
@@ -141,7 +145,7 @@ volumePanels.forEach((panel) => {
 });
 
 const CHANGELOG_STORAGE_KEY = 'simrail-sip:last-shown-changelog-version';
-const CHANGELOG_FALLBACK_VERSION = '2.1.3';
+const CHANGELOG_FALLBACK_VERSION = '2.1.4';
 const whatsNewModal = document.getElementById('whats-new-modal');
 const whatsNewVersion = document.getElementById('whats-new-version');
 const closeWhatsNewButton = document.getElementById('close-whats-new');
@@ -387,6 +391,46 @@ function setApiHealthStatus(state, message) {
     startApiStatusIntroIfNeeded(el);
 }
 
+const API_STALE_MODE_MESSAGE = 'Zewnętrzna awaria API SimRail niezależna od programu SIP. Dane mogą być nieaktualne';
+
+function setModeApiWarning(mode, visible) {
+    const warning = mode === 'station' ? stationApiWarning : onboardApiWarning;
+    if (!warning) return;
+
+    warning.textContent = API_STALE_MODE_MESSAGE;
+    warning.hidden = !visible;
+}
+
+function showApiWarningForVisibleMode() {
+    if (stationScreen.style.display !== 'none') setModeApiWarning('station', true);
+    if (sipScreen.style.display !== 'none') setModeApiWarning('onboard', true);
+}
+
+function hideApiWarnings() {
+    setModeApiWarning('station', false);
+    setModeApiWarning('onboard', false);
+}
+
+function isApiDataRefreshError(err) {
+    return !err?.code || [
+        'STALE_API_DATA',
+        'API_TIMEOUT',
+        'API_HTTP_ERROR',
+        'API_FORMAT_ERROR',
+        'API_ERROR'
+    ].includes(err.code);
+}
+
+function handleVisibleModeApiError(err) {
+    if (isApiDataRefreshError(err)) showApiWarningForVisibleMode();
+}
+
+function setModeRefreshButtonBusy(button, busy) {
+    if (!button) return;
+    button.disabled = busy;
+    button.classList.toggle('is-loading', busy);
+}
+
 function makeApiError(message, code = 'API_ERROR') {
     const err = new Error(message);
     err.code = code;
@@ -588,6 +632,7 @@ function validateActiveTrainsResponse(activeTrains) {
     if (selectedServerClockProblem) {
         const message = `API: NIEAKTUALNE DANE${code ? ` • ${code}` : ''} — ${selectedServerClockProblem}`;
         setApiHealthStatus('error', message);
+        showApiWarningForVisibleMode();
         throw makeApiError(selectedServerClockProblem, 'STALE_API_DATA');
     }
 
@@ -596,8 +641,11 @@ function validateActiveTrainsResponse(activeTrains) {
     if (!assessment.ok) {
         const message = `API: NIEAKTUALNE DANE${code ? ` • ${code}` : ''} — ${assessment.reason}`;
         setApiHealthStatus('error', message);
+        showApiWarningForVisibleMode();
         throw makeApiError(assessment.reason, 'STALE_API_DATA');
     }
+
+    hideApiWarnings();
 
     if (isServerClockVerified() || isLiveDataVerified()) {
         setApiHealthStatus('ok', `API: OK${code ? ` • ${code}` : ''}`);
@@ -664,6 +712,7 @@ async function refreshSelectedServerClockHealth(force = false) {
         selectedServerClockProblem = observation.reason;
         const code = activeServerCode.toUpperCase();
         setApiHealthStatus('error', `API: NIEAKTUALNE DANE • ${code} — ${observation.reason}`);
+        showApiWarningForVisibleMode();
         throw makeApiError(observation.reason, 'STALE_API_DATA');
     }
 
@@ -683,6 +732,7 @@ function startServerClockHealthMonitor() {
     serverClockHealthInterval = setInterval(() => {
         refreshSelectedServerClockHealth(true).catch(err => {
             console.error('[API] Kontrola zegara serwera:', err);
+            handleVisibleModeApiError(err);
         });
     }, API_CLOCK_RECHECK_MS);
 }
@@ -1107,12 +1157,14 @@ async function fetchFullServerTimetable(serverCode) {
 
 let serversMap = {}; 
 let trackingInterval = null;
+let trackingGeneration = 0;
 let boardRefreshInterval = null;
 let countdownInterval = null;
 let refreshCountdown = 15;
 
 let allPassengerTrains = []; 
 let activeJourneyId = '';
+let activeTrainNumber = '';
 let activeDestination = ''; 
 let activeTrainType = ''; 
 let targetStationList = [];
@@ -1464,6 +1516,7 @@ startBtn.addEventListener('click', async () => {
 backBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         if (trackingInterval) clearInterval(trackingInterval);
+        trackingGeneration++;
         if (boardRefreshInterval) clearInterval(boardRefreshInterval);
         if (countdownInterval) clearInterval(countdownInterval);
         stopRandomStationAnnouncements();
@@ -1480,6 +1533,9 @@ backBtns.forEach(btn => {
         const tbody = document.getElementById('station-departures-body');
         if(tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 40px;">Zatrzymano system stacyjny.</td></tr>';
         hideStationAnnouncementTicker();
+        hideApiWarnings();
+        setModeRefreshButtonBusy(onboardDataRefreshBtn, false);
+        setModeRefreshButtonBusy(stationDataRefreshBtn, false);
         document.getElementById('departed-modal').style.display = 'none';
         document.getElementById('cancelled-modal').style.display = 'none';
         
@@ -2263,6 +2319,8 @@ async function startStationMode() {
     ensureStationPlatformTrackColumns();
     setupScreen.style.display = 'none';
     stationScreen.style.display = 'flex';
+    setModeApiWarning('station', false);
+    setModeRefreshButtonBusy(stationDataRefreshBtn, true);
     scheduleRandomStationAnnouncement();
     departedHistory = [];
     cancelledHistory = [];
@@ -2278,7 +2336,8 @@ async function startStationMode() {
     }, 1000);
 
     await fetchStationTimetable();
-    startStationLiveTracking();
+    if (stationScreen.style.display !== 'none') startStationLiveTracking();
+    setModeRefreshButtonBusy(stationDataRefreshBtn, false);
 
     if (boardRefreshInterval) clearInterval(boardRefreshInterval);
     boardRefreshInterval = setInterval(() => {
@@ -2313,18 +2372,68 @@ async function fetchStationTimetable() {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 40px; color: #ffcc00;">Skanowanie mapy pociągów...<br><small style="color:#aaa;">(Wykryto ${globalActiveTrainsCount} aktywnych składów na serwerze)</small></td></tr>`;
 
         await syncNewTrains(activeTrains);
+        renderStationBoard();
+        return true;
     } catch (err) {
         console.error('[STACJA] Błąd pobierania rozkładu:', err);
+        handleVisibleModeApiError(err);
         if (stationTimetable.length > 0) {
             renderStationBoard();
         } else {
-            const text = err?.code === 'STALE_API_DATA'
-                ? 'API zwraca nieaktualne dane. Tablica nie będzie korzystać ze starej migawki.'
-                : 'Błąd połączenia z API. Spróbuj ponownie po przywróceniu działania usługi.';
+            const text = 'Brak danych do wyświetlenia. Użyj przycisku odświeżania.';
             tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#ff5252;">${text}</td></tr>`;
         }
+        return false;
     }
 }
+
+async function refreshStationModeData() {
+    if (!stationDataRefreshBtn || stationDataRefreshBtn.disabled) return;
+
+    const previousTimetable = stationTimetable;
+    const previousKnownJourneyIds = knownJourneyIds;
+
+    setModeRefreshButtonBusy(stationDataRefreshBtn, true);
+    if (trackingInterval) {
+        clearInterval(trackingInterval);
+        trackingInterval = null;
+    }
+    trackingGeneration++;
+
+    // Jeżeli poprzedni cykl właśnie dodaje nowe pociągi, pozwalamy mu bezpiecznie
+    // zakończyć zapis przed zastąpieniem listy świeżym rozkładem.
+    for (let attempt = 0; attempt < 200 && isSyncing; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    try {
+        try {
+            await refreshSelectedServerClockHealth(true);
+        } catch (err) {
+            handleVisibleModeApiError(err);
+        }
+
+        const refreshed = await fetchStationTimetable();
+
+        if (!refreshed && previousTimetable.length > 0) {
+            stationTimetable = previousTimetable;
+            knownJourneyIds = previousKnownJourneyIds;
+            renderStationBoard();
+        }
+    } catch (err) {
+        console.error('[STACJA] Ręczne odświeżenie danych nie powiodło się:', err);
+        handleVisibleModeApiError(err);
+        stationTimetable = previousTimetable;
+        knownJourneyIds = previousKnownJourneyIds;
+        if (stationTimetable.length > 0) renderStationBoard();
+    } finally {
+        refreshCountdown = 15;
+        if (stationScreen.style.display !== 'none') startStationLiveTracking();
+        setModeRefreshButtonBusy(stationDataRefreshBtn, false);
+    }
+}
+
+stationDataRefreshBtn?.addEventListener('click', refreshStationModeData);
 
 async function syncNewTrains(activeTrains) {
     if (isSyncing || !Array.isArray(activeTrains)) return;
@@ -2643,9 +2752,11 @@ function renderStationBoard() {
 
 function startStationLiveTracking() {
     if (trackingInterval) clearInterval(trackingInterval);
+    const modeTrackingGeneration = ++trackingGeneration;
     const stationVoice = 'pl-PL-ZofiaNeural';
 
     trackingInterval = setInterval(async () => {
+        if (modeTrackingGeneration !== trackingGeneration) return;
         refreshCountdown = 15;
 
         try {
@@ -2655,12 +2766,15 @@ function startStationLiveTracking() {
                 'Live tracking - stacja'
             );
 
+            if (modeTrackingGeneration !== trackingGeneration) return;
+
             syncTimeWithActiveTrains(activeTrains);
             globalActiveTrainsCount = Array.isArray(activeTrains) ? activeTrains.length : 0;
 
             // Poczekaj na dodanie nowych pociągów, żeby mogły zostać uwzględnione
             // jeszcze w tym samym cyklu odświeżenia.
             await syncNewTrains(activeTrains);
+            if (modeTrackingGeneration !== trackingGeneration) return;
 
             // ETAP 1: aktualizacja danych wszystkich pociągów.
             for (const t of stationTimetable) {
@@ -2745,6 +2859,7 @@ function startStationLiveTracking() {
                 .slice(0, 10);
 
             await Promise.all(stationRealtimeCandidates.map(t => refreshStationSpecificRealtime(t)));
+            if (modeTrackingGeneration !== trackingGeneration) return;
 
             // Jeżeli świeże dane jednoznacznie wskazały postój techniczny,
             // usuwamy pociąg jeszcze przed wyliczeniem widocznych rekordów i zapowiedzi.
@@ -2883,15 +2998,11 @@ function startStationLiveTracking() {
             }
         } catch (err) {
             console.error('[STACJA] Błąd śledzenia tablicy stacyjnej:', err);
-            if (err?.code === 'STALE_API_DATA' || err?.code === 'API_TIMEOUT' || err?.code === 'API_HTTP_ERROR') {
-                const tbody = document.getElementById('station-departures-body');
-                if (tbody) {
-                    const text = err?.code === 'STALE_API_DATA'
-                        ? 'Dane API są nieaktualne. Wstrzymano odświeżanie tablicy, aby nie pokazywać starego rozkładu.'
-                        : 'Brak aktualnego połączenia z API. Oczekiwanie na ponowne połączenie...';
-                    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#ff5252;">${text}</td></tr>`;
-                }
-            }
+            handleVisibleModeApiError(err);
+
+            // Zachowujemy ostatnią poprawnie wyrenderowaną tablicę. Ostrzeżenie
+            // jasno informuje, że widoczne godziny i statusy mogą być nieaktualne.
+            if (!isSyncing && stationTimetable.length > 0) renderStationBoard();
         }
     }, STATION_REFRESH_MS);
 }
@@ -3211,6 +3322,7 @@ function getOnboardEventDelayMinutes(event, plannedTime) {
 async function startOnboardMode() {
     activeJourneyId = trainSelect.value;
     const selectedOption = trainSelect.options[trainSelect.selectedIndex];
+    activeTrainNumber = selectedOption.dataset.rawNumber || '';
     
     activeDestination = selectedOption.dataset.destination;
     
@@ -3223,6 +3335,8 @@ async function startOnboardMode() {
 
     setupScreen.style.display = 'none';
     sipScreen.style.display = 'flex';
+    setModeApiWarning('onboard', false);
+    setModeRefreshButtonBusy(onboardDataRefreshBtn, true);
     document.querySelector('.train-info').textContent = `${selectedOption.dataset.trainInfo} • Kierunek: ${activeDestination}`;
     document.querySelector('.current-status .label').textContent = 'NASTĘPNA STACJA:';
     document.querySelector('.eta-box .label').textContent = 'PLANOWY PRZYJAZD:';
@@ -3243,16 +3357,67 @@ async function startOnboardMode() {
         }
     } catch (err) {
         console.error('[MASZYNISTA] Błąd pobrania początkowej pozycji pociągu:', err);
+        handleVisibleModeApiError(err);
     }
 
     await loadJourneyRouteOnboard(
         activeJourneyId,
         initialLat,
         initialLon,
-        selectedOption.dataset.rawNumber || ''
+        activeTrainNumber
     );
-    startOnboardLiveTracking();
+    if (sipScreen.style.display !== 'none') startOnboardLiveTracking();
+    setModeRefreshButtonBusy(onboardDataRefreshBtn, false);
 }
+
+async function refreshOnboardModeData() {
+    if (!onboardDataRefreshBtn || onboardDataRefreshBtn.disabled) return;
+
+    setModeRefreshButtonBusy(onboardDataRefreshBtn, true);
+    if (trackingInterval) {
+        clearInterval(trackingInterval);
+        trackingInterval = null;
+    }
+    trackingGeneration++;
+
+    try {
+        try {
+            await refreshSelectedServerClockHealth(true);
+        } catch (err) {
+            handleVisibleModeApiError(err);
+        }
+
+        const trains = await fetchJsonFresh(
+            `${API_BASE}/sit-journeys/v2/active?serverId=${currentServerId}`,
+            'Ręczne odświeżenie - maszynista'
+        );
+
+        syncTimeWithActiveTrains(trains);
+
+        const myTrain = trains.find(t => t.journeyId === activeJourneyId);
+        if (!myTrain) {
+            throw makeApiError('Wybrany pociąg nie jest już dostępny na mapie.', 'TRAIN_NOT_FOUND');
+        }
+
+        const position = myTrain.liveData?.position;
+        const routeLoaded = await loadJourneyRouteOnboard(
+            activeJourneyId,
+            position?.latitude || 0,
+            position?.longitude || 0,
+            activeTrainNumber
+        );
+
+        if (routeLoaded && myTrain.liveData) updateSpeedOnboard(myTrain.liveData.speed);
+    } catch (err) {
+        console.error('[MASZYNISTA] Ręczne odświeżenie danych nie powiodło się:', err);
+        handleVisibleModeApiError(err);
+    } finally {
+        if (sipScreen.style.display !== 'none') startOnboardLiveTracking();
+        setModeRefreshButtonBusy(onboardDataRefreshBtn, false);
+    }
+}
+
+onboardDataRefreshBtn?.addEventListener('click', refreshOnboardModeData);
 
 async function loadJourneyRouteOnboard(journeyId, trainLat, trainLon, selectedTrainNumber = '') {
     try {
@@ -3384,13 +3549,17 @@ async function loadJourneyRouteOnboard(journeyId, trainLat, trainLon, selectedTr
             const activeElement = document.querySelector('.route-list li.approaching') || document.querySelector('.route-list li.at-station');
             if (activeElement) activeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 500);
+        return true;
     } catch(err) {
         console.error('[MASZYNISTA] Błąd wczytywania trasy pociągu:', err);
+        handleVisibleModeApiError(err);
+        return false;
     }
 }
 
 function startOnboardLiveTracking() {
     if (trackingInterval) clearInterval(trackingInterval);
+    const modeTrackingGeneration = ++trackingGeneration;
     const currentIsIntercity = ["NATIONAL_EXPRESS_TRAIN", "INTER_NATIONAL_EXPRESS_TRAIN", "INTER_REGIONAL_EXPRESS_TRAIN"].includes(activeTrainType);
     const currentHasWars = ["NATIONAL_EXPRESS_TRAIN", "INTER_NATIONAL_EXPRESS_TRAIN"].includes(activeTrainType);
     const assignedVoice = currentIsIntercity ? 'pl-PL-ZofiaNeural' : 'pl-PL-MarekNeural';
@@ -3398,12 +3567,15 @@ function startOnboardLiveTracking() {
     let trackingLoopCounter = 0;
 
     trackingInterval = setInterval(async () => {
+        if (modeTrackingGeneration !== trackingGeneration) return;
         trackingLoopCounter++;
         try {
             const trains = await fetchJsonFresh(
                 `${API_BASE}/sit-journeys/v2/active?serverId=${currentServerId}`,
                 'Live tracking - maszynista'
             );
+
+            if (modeTrackingGeneration !== trackingGeneration) return;
             
             syncTimeWithActiveTrains(trains);
             
@@ -3421,6 +3593,7 @@ function startOnboardLiveTracking() {
                         `${API_BASE}/sit-journeys/v2/by-id/${activeJourneyId}`,
                         'Odświeżenie rozkładu - maszynista'
                     );
+                    if (modeTrackingGeneration !== trackingGeneration) return;
                     if (journeyData.events) {
                         journeyData.events.forEach(ev => {
                             if (ev.stopPlace && ev.stopPlace.name && isCommercialStationStopEvent(ev)) {
@@ -3447,6 +3620,7 @@ function startOnboardLiveTracking() {
                     }
                 } catch(e) {
                     console.error('[MASZYNISTA] Błąd okresowego odświeżania rozkładu:', e);
+                    handleVisibleModeApiError(e);
                 }
             }
 
@@ -3502,6 +3676,7 @@ function startOnboardLiveTracking() {
             }
         } catch (err) {
             console.error('[MASZYNISTA] Błąd pętli live tracking:', err);
+            handleVisibleModeApiError(err);
         }
     }, 5000); 
 }
