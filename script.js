@@ -1,7 +1,386 @@
 const { ipcRenderer } = require('electron');
+const fs = require('fs');
+const path = require('path');
+const { pathToFileURL } = require('url');
 
-const APP_BUILD_TAG = 'api-outage-continuity-release-2.1.4-2026-08-25-28';
+const APP_BUILD_TAG = 'simrail-sip-by-urso-2.2.0-release-2026-08-27';
 console.log(`[SimRail SIP by Urso] Build: ${APP_BUILD_TAG}`);
+
+const APP_LANGUAGE_STORAGE_KEY = 'simrail-sip:interface-language';
+const SUPPORTED_INTERFACE_LANGUAGES = new Set(['pl', 'en']);
+const UI_TRANSLATIONS = Object.freeze({
+    pl: {
+        'common.loading': 'Ładowanie...',
+        'common.loadingData': 'Wczytywanie...',
+        'common.back': 'Powrót do wyboru',
+        'common.close': 'Zamknij',
+        'common.closeWindow': 'Zamknij okno',
+        'settings.open': 'Ustawienia',
+        'settings.openAria': 'Otwórz ustawienia',
+        'settings.closeAria': 'Zamknij ustawienia',
+        'settings.title': 'Ustawienia',
+        'settings.subtitle': 'Dostosuj język, dźwięk oraz sposób odtwarzania zapowiedzi.',
+        'settings.applicationAndSound': 'Program i dźwięk',
+        'settings.interfaceLanguage': 'Język programu',
+        'settings.languagePolish': 'Polski',
+        'settings.languageEnglish': 'English',
+        'settings.volume': 'Głośność komunikatów',
+        'settings.testAnnouncement': 'Testuj zapowiedź',
+        'settings.stationMessages': 'Komunikaty stacyjne',
+        'settings.randomMessages': 'Losowe komunikaty co 5 minut',
+        'settings.refreshCountdownInitial': 'Odświeżanie tablicy za: 15s',
+        'settings.onboardAnnouncements': 'Zapowiedzi pokładowe',
+        'settings.regionalAnnouncements': 'Zapowiedzi regionalne',
+        'settings.regionalAnnouncementsAria': 'Sposób odtwarzania zapowiedzi regionalnych',
+        'settings.longDistanceAnnouncements': 'Zapowiedzi dalekobieżne',
+        'settings.longDistanceAnnouncementsAria': 'Sposób odtwarzania zapowiedzi dalekobieżnych',
+        'settings.synthesizer': 'Syntezator',
+        'settings.recordedVoice': 'Lektor',
+        'settings.recordedSoon': 'Lektor — dostępne wkrótce',
+        'settings.synthPolishOnly': 'Syntezator odtwarza wszystkie zapowiedzi wyłącznie po polsku.',
+        'settings.recordedLanguageInfo': 'Lektor używa języka programu, a nazwy stacji pozostają wymawiane po polsku.',
+        'settings.whatsNew': 'Co nowego?',
+        'setup.server': 'Serwer:',
+        'setup.refreshServers': 'Odśwież listę serwerów',
+        'setup.onboardMode': '🚆 Tryb Pokładowy<br><span>(Dla Maszynisty)</span>',
+        'setup.stationMode': '🚉 Tryb Stacyjny<br><span>(Dla Dyżurnego)</span>',
+        'setup.train': 'Pociąg:',
+        'setup.filterAll': 'Wszystkie rodzaje',
+        'setup.filterExpress': 'Dalekobieżne (Intercity / TLK)',
+        'setup.filterRegional': 'Regionalne i Osobowe',
+        'setup.refreshTrains': 'Odśwież listę pociągów',
+        'setup.trainSearch': 'Wpisz numer by przefiltrować...',
+        'setup.selectServerFirst': '-- Wybierz serwer najpierw --',
+        'setup.selectStation': 'Wybierz stację:',
+        'setup.stationSearch': 'Wpisz nazwę by przefiltrować...',
+        'setup.start': 'Uruchom System SIP',
+        'setup.addFavoriteServer': 'Dodaj wybrany serwer do ulubionych',
+        'setup.removeFavoriteServer': 'Usuń wybrany serwer z ulubionych',
+        'setup.addFavoriteStation': 'Dodaj wybraną stację do ulubionych',
+        'setup.removeFavoriteStation': 'Usuń wybraną stację z ulubionych',
+        'setup.selectServer': '-- Wybierz serwer --',
+        'setup.activeServer': '{code} - Serwer Aktywny',
+        'setup.noStations': 'Brak stacji',
+        'setup.apiError': 'Błąd API SIT',
+        'onboard.refresh': 'Odśwież dane pociągu',
+        'onboard.nextStation': 'NASTĘPNA STACJA:',
+        'onboard.station': 'STACJA:',
+        'onboard.plannedArrival': 'PLANOWY PRZYJAZD:',
+        'onboard.plannedDeparture': 'PLANOWY ODJAZD:',
+        'onboard.direction': '{train} • Kierunek: {destination}',
+        'route.progress': 'POSTĘP TRASY',
+        'route.progressAria': 'Postęp trasy',
+        'route.approximateProgress': 'Przybliżony postęp trasy',
+        'route.waiting': 'Oczekiwanie na dane trasy',
+        'route.zeroStations': '0 z 0 stacji',
+        'route.progressWaitingAria': 'Postęp trasy: oczekiwanie na dane',
+        'route.originFallback': 'Początek trasy',
+        'route.destinationFallback': 'Koniec trasy',
+        'route.atStation': 'Na stacji: {station}',
+        'route.routeStart': 'Początek trasy: {station}',
+        'route.toStation': 'W drodze do: {station}',
+        'route.stationStage': 'Stacja {current} z {total}',
+        'route.segmentStage': 'Odcinek {current} z {total}',
+        'route.progressValueAria': 'Postęp trasy: {percent} procent. {status}',
+        'station.stationEmpty': 'STACJA: ---',
+        'station.stationNamed': 'STACJA: {station}',
+        'station.refresh': 'Odśwież dane tablicy',
+        'station.dispatchedTrains': 'Odprawione Pociągi',
+        'station.cancelledTrains': 'Pociągi odwołane',
+        'station.departuresTitle': 'ODJAZDY / DEPARTURES',
+        'station.headerTime': 'Godzina<br><span class="en">Time</span>',
+        'station.headerTrain': 'Pociąg<br><span class="en">Train</span>',
+        'station.headerDestination': 'Kierunek / Przez<br><span class="en">Destination / Via</span>',
+        'station.headerPlatform': 'Peron<br><span class="en">Platform</span>',
+        'station.headerTrack': 'Tor<br><span class="en">Track</span>',
+        'station.headerStatus': 'Status<br><span class="en">Status</span>',
+        'station.loadingSchedule': 'Pobieranie rozkładu jazdy dla stacji...',
+        'station.refreshCountdown': 'Odświeżanie danych za: {seconds}s',
+        'station.stopped': 'Zatrzymano system stacyjny.',
+        'station.loadingFullSchedule': 'Pobieranie pełnego rozkładu stacji...',
+        'station.scanningMap': 'Skanowanie mapy pociągów...',
+        'station.detectedActive': '(Wykryto {count} aktywnych składów na serwerze)',
+        'station.noData': 'Brak danych do wyświetlenia. Użyj przycisku odświeżania.',
+        'station.emptyBoard': 'Brak zaplanowanych przejazdów przez stację.',
+        'station.activeOnServer': 'Aktualnie na całym serwerze znajduje się {count} aktywnych pociągów.',
+        'station.typeRegional': 'Osobowy / Regionalny',
+        'station.typeExpressPremium': 'Intercity / Express Premium',
+        'station.typeLkaExpress': 'Regionalny / Pośpieszny ŁKA',
+        'station.typeLongDistance': 'Dalekobieżny / Intercity',
+        'station.typeFastPassenger': 'Pośpieszny / Osobowy',
+        'station.typeTlk': 'Dalekobieżny / TLK',
+        'station.typeSprinter': 'Regionalny / Sprinter',
+        'station.arrivalShort': 'Przyj:',
+        'station.departureShort': 'Odj:',
+        'station.via': 'przez: {via}',
+        'station.statusCancelled': 'Odwołany',
+        'station.statusScheduled': 'Zaplanowany',
+        'station.statusDeparted': 'Odjechał',
+        'station.statusAtStation': 'Na stacji',
+        'station.statusDelayed': 'Opóźniony {minutes} min',
+        'station.statusOnTime': 'Na czas',
+        'history.dispatchedTitle': 'Pociągi, które odjechały',
+        'history.cancelledTitle': 'Pociągi odwołane',
+        'history.noDispatched': 'Brak pociągów, które odjechały.',
+        'history.noCancelled': 'Brak pociągów odwołanych podczas bieżącej pracy tablicy.',
+        'history.toStation': 'do stacji {station}',
+        'history.departedMinutes': 'Odjechał {minutes} minut temu',
+        'history.cancelledMinutes': 'Odwołany {minutes} minut temu',
+        'trains.loading': 'Pobieranie pociągów...',
+        'trains.loadingShort': 'Pobieranie...',
+        'trains.noneOnServer': 'Brak pociągów na serwerze',
+        'trains.nonePassenger': 'Brak pociągów pasażerskich',
+        'trains.none': 'Brak pociągów',
+        'trains.search': 'Wpisz numer by przefiltrować...',
+        'trains.apiStale': 'API zwraca nieaktualne dane',
+        'trains.apiError': 'Błąd API',
+        'trains.staleOption': 'Nieaktualne dane API',
+        'trains.noConnection': 'Brak połączenia z API',
+        'trains.noMatches': 'Brak pociągów spełniających kryteria',
+        'trains.option': '{train} (Kierunek: {destination})',
+        'trains.staleReason': 'API zwraca nieaktualne dane. Poczekaj na przywrócenie działania i kliknij odśwież.',
+        'trains.connectionReason': 'Brak poprawnego połączenia z API. Kliknij odśwież i spróbuj ponownie.',
+        'api.staleWarning': 'Zewnętrzna awaria API SimRail niezależna od programu SIP. Dane mogą być nieaktualne',
+        'api.hint': 'Kliknij po szczegóły',
+        'api.expand': 'Kliknij, aby rozwinąć informacje o API.',
+        'api.collapse': 'Kliknij, aby zwinąć informacje o API do kolorowej kropki.',
+        'api.checking': 'API: sprawdzanie...',
+        'api.checkingAvailability': 'API: sprawdzanie dostępności...',
+        'api.availableSelect': 'API: dostępne • wybierz serwer',
+        'api.unavailable': 'API: NIEDOSTĘPNE — nie udało się pobrać listy serwerów',
+        'api.checkingCode': 'API: SPRAWDZANIE • {code}',
+        'api.ok': 'API: OK',
+        'api.okCode': 'API: OK • {code}',
+        'api.staleCode': 'API: NIEAKTUALNE DANE • {code}',
+        'api.noResponse': 'API: BRAK ODPOWIEDZI',
+        'api.connectionError': 'API: BŁĄD POŁĄCZENIA',
+        'whatsNew.version': 'Wersja {version}',
+        'whatsNew.title': 'Co nowego w SimRail SIP by Urso?',
+        'whatsNew.subtitle': 'Najważniejsze zmiany i usprawnienia w tej wersji programu.',
+        'whatsNew.regionalVoice': '<strong>Profesjonalny lektor regionalny:</strong> nowy sposób odtwarzania zapowiedzi dla pociągów regionalnych i ŁKA Sprinter, z naturalnymi nagraniami oraz odstępem między kolejnymi częściami komunikatu. Dotychczasowy syntezator nadal pozostaje dostępny.',
+        'whatsNew.interfaceLanguage': '<strong>Polski i angielski interfejs:</strong> język programu można zmienić w ustawieniach bez ponownego uruchamiania. Nazwy stacji pozostają po polsku, a lektor korzysta z polskich lub angielskich zwrotów zgodnie z wybranym językiem.',
+        'whatsNew.settingsWindow': '<strong>Rozbudowane ustawienia:</strong> ustawienia są teraz dostępne również na ekranie głównym i otwierają się w większym, czytelniejszym oknie z osobnymi opcjami zapowiedzi regionalnych i dalekobieżnych.',
+        'whatsNew.routeProgress': '<strong>Postęp trasy:</strong> ekran maszynisty pokazuje przybliżony postęp przejazdu, bieżący odcinek lub stację oraz początek i koniec trasy.',
+        'whatsNew.confirm': 'Rozumiem'
+    },
+    en: {
+        'common.loading': 'Loading...',
+        'common.loadingData': 'Loading data...',
+        'common.back': 'Back to selection',
+        'common.close': 'Close',
+        'common.closeWindow': 'Close window',
+        'settings.open': 'Settings',
+        'settings.openAria': 'Open settings',
+        'settings.closeAria': 'Close settings',
+        'settings.title': 'Settings',
+        'settings.subtitle': 'Adjust the language, sound and announcement playback method.',
+        'settings.applicationAndSound': 'Application and sound',
+        'settings.interfaceLanguage': 'Application language',
+        'settings.languagePolish': 'Polski',
+        'settings.languageEnglish': 'English',
+        'settings.volume': 'Announcement volume',
+        'settings.testAnnouncement': 'Test announcement',
+        'settings.stationMessages': 'Station messages',
+        'settings.randomMessages': 'Random messages every 5 minutes',
+        'settings.refreshCountdownInitial': 'Board refresh in: 15s',
+        'settings.onboardAnnouncements': 'Onboard announcements',
+        'settings.regionalAnnouncements': 'Regional train announcements',
+        'settings.regionalAnnouncementsAria': 'Regional train announcement playback method',
+        'settings.longDistanceAnnouncements': 'Long-distance train announcements',
+        'settings.longDistanceAnnouncementsAria': 'Long-distance train announcement playback method',
+        'settings.synthesizer': 'Synthesizer',
+        'settings.recordedVoice': 'Recorded voice',
+        'settings.recordedSoon': 'Recorded voice — coming soon',
+        'settings.synthPolishOnly': 'The synthesizer plays all announcements in Polish only.',
+        'settings.recordedLanguageInfo': 'The recorded voice follows the application language, while station names remain spoken in Polish.',
+        'settings.whatsNew': "What's new?",
+        'setup.server': 'Server:',
+        'setup.refreshServers': 'Refresh server list',
+        'setup.onboardMode': '🚆 Onboard Mode<br><span>(For Drivers)</span>',
+        'setup.stationMode': '🚉 Station Mode<br><span>(For Dispatchers)</span>',
+        'setup.train': 'Train:',
+        'setup.filterAll': 'All train types',
+        'setup.filterExpress': 'Long-distance (Intercity / TLK)',
+        'setup.filterRegional': 'Regional and passenger trains',
+        'setup.refreshTrains': 'Refresh train list',
+        'setup.trainSearch': 'Enter a train number to filter...',
+        'setup.selectServerFirst': '-- Select a server first --',
+        'setup.selectStation': 'Select a station:',
+        'setup.stationSearch': 'Enter a station name to filter...',
+        'setup.start': 'Start SIP System',
+        'setup.addFavoriteServer': 'Add selected server to favorites',
+        'setup.removeFavoriteServer': 'Remove selected server from favorites',
+        'setup.addFavoriteStation': 'Add selected station to favorites',
+        'setup.removeFavoriteStation': 'Remove selected station from favorites',
+        'setup.selectServer': '-- Select a server --',
+        'setup.activeServer': '{code} - Active Server',
+        'setup.noStations': 'No stations',
+        'setup.apiError': 'SIT API Error',
+        'onboard.refresh': 'Refresh train data',
+        'onboard.nextStation': 'NEXT STATION:',
+        'onboard.station': 'STATION:',
+        'onboard.plannedArrival': 'SCHEDULED ARRIVAL:',
+        'onboard.plannedDeparture': 'SCHEDULED DEPARTURE:',
+        'onboard.direction': '{train} • Destination: {destination}',
+        'route.progress': 'ROUTE PROGRESS',
+        'route.progressAria': 'Route progress',
+        'route.approximateProgress': 'Approximate route progress',
+        'route.waiting': 'Waiting for route data',
+        'route.zeroStations': '0 of 0 stations',
+        'route.progressWaitingAria': 'Route progress: waiting for data',
+        'route.originFallback': 'Route origin',
+        'route.destinationFallback': 'Route destination',
+        'route.atStation': 'At station: {station}',
+        'route.routeStart': 'Route origin: {station}',
+        'route.toStation': 'En route to: {station}',
+        'route.stationStage': 'Station {current} of {total}',
+        'route.segmentStage': 'Section {current} of {total}',
+        'route.progressValueAria': 'Route progress: {percent} percent. {status}',
+        'station.stationEmpty': 'STATION: ---',
+        'station.stationNamed': 'STATION: {station}',
+        'station.refresh': 'Refresh board data',
+        'station.dispatchedTrains': 'Dispatched Trains',
+        'station.cancelledTrains': 'Cancelled Trains',
+        'station.departuresTitle': 'DEPARTURES',
+        'station.headerTime': 'Time',
+        'station.headerTrain': 'Train',
+        'station.headerDestination': 'Destination / Via',
+        'station.headerPlatform': 'Platform',
+        'station.headerTrack': 'Track',
+        'station.headerStatus': 'Status',
+        'station.loadingSchedule': 'Loading the station timetable...',
+        'station.refreshCountdown': 'Data refresh in: {seconds}s',
+        'station.stopped': 'Station system stopped.',
+        'station.loadingFullSchedule': 'Loading the full station timetable...',
+        'station.scanningMap': 'Scanning trains on the map...',
+        'station.detectedActive': '({count} active trains detected on the server)',
+        'station.noData': 'No data to display. Use the refresh button.',
+        'station.emptyBoard': 'No scheduled services through this station.',
+        'station.activeOnServer': 'There are currently {count} active trains on the server.',
+        'station.typeRegional': 'Passenger / Regional',
+        'station.typeExpressPremium': 'Intercity / Express Premium',
+        'station.typeLkaExpress': 'Regional / ŁKA Express',
+        'station.typeLongDistance': 'Long-distance / Intercity',
+        'station.typeFastPassenger': 'Fast / Passenger',
+        'station.typeTlk': 'Long-distance / TLK',
+        'station.typeSprinter': 'Regional / Sprinter',
+        'station.arrivalShort': 'Arr:',
+        'station.departureShort': 'Dep:',
+        'station.via': 'via: {via}',
+        'station.statusCancelled': 'Cancelled',
+        'station.statusScheduled': 'Scheduled',
+        'station.statusDeparted': 'Departed',
+        'station.statusAtStation': 'At station',
+        'station.statusDelayed': 'Delayed {minutes} min',
+        'station.statusOnTime': 'On time',
+        'history.dispatchedTitle': 'Dispatched trains',
+        'history.cancelledTitle': 'Cancelled trains',
+        'history.noDispatched': 'No dispatched trains.',
+        'history.noCancelled': 'No trains were cancelled during the current board session.',
+        'history.toStation': 'to {station}',
+        'history.departedMinutes': 'Departed {minutes} minutes ago',
+        'history.cancelledMinutes': 'Cancelled {minutes} minutes ago',
+        'trains.loading': 'Loading trains...',
+        'trains.loadingShort': 'Loading...',
+        'trains.noneOnServer': 'No trains on this server',
+        'trains.nonePassenger': 'No passenger trains',
+        'trains.none': 'No trains',
+        'trains.search': 'Enter a train number to filter...',
+        'trains.apiStale': 'The API is returning stale data',
+        'trains.apiError': 'API error',
+        'trains.staleOption': 'Stale API data',
+        'trains.noConnection': 'No API connection',
+        'trains.noMatches': 'No trains match the selected filters',
+        'trains.option': '{train} (Destination: {destination})',
+        'trains.staleReason': 'The API is returning stale data. Wait for service to be restored and click refresh.',
+        'trains.connectionReason': 'No valid API connection. Click refresh and try again.',
+        'api.staleWarning': 'External SimRail API failure independent of the SIP application. Data may be outdated',
+        'api.hint': 'Click for details',
+        'api.expand': 'Click to expand API information.',
+        'api.collapse': 'Click to collapse API information to a status dot.',
+        'api.checking': 'API: checking...',
+        'api.checkingAvailability': 'API: checking availability...',
+        'api.availableSelect': 'API: available • select a server',
+        'api.unavailable': 'API: UNAVAILABLE — failed to retrieve the server list',
+        'api.checkingCode': 'API: CHECKING • {code}',
+        'api.ok': 'API: OK',
+        'api.okCode': 'API: OK • {code}',
+        'api.staleCode': 'API: STALE DATA • {code}',
+        'api.noResponse': 'API: NO RESPONSE',
+        'api.connectionError': 'API: CONNECTION ERROR',
+        'whatsNew.version': 'Version {version}',
+        'whatsNew.title': "What's new in SimRail SIP by Urso?",
+        'whatsNew.subtitle': 'The most important changes and improvements in this version.',
+        'whatsNew.regionalVoice': '<strong>Professional regional recorded voice:</strong> a new announcement method for regional trains and ŁKA Sprinter uses natural recordings with a short pause between consecutive message parts. The existing synthesizer remains available.',
+        'whatsNew.interfaceLanguage': '<strong>Polish and English interface:</strong> the application language can be changed in Settings without restarting. Station names remain in Polish, while the recorded voice uses Polish or English phrases according to the selected language.',
+        'whatsNew.settingsWindow': '<strong>Expanded Settings:</strong> Settings are now also available on the home screen and open in a larger, clearer window with separate regional and long-distance announcement options.',
+        'whatsNew.routeProgress': '<strong>Route progress:</strong> the driver screen shows the approximate journey progress, current section or station, and the start and end of the route.',
+        'whatsNew.confirm': 'Got it'
+    }
+});
+
+let currentInterfaceLanguage = 'pl';
+try {
+    const savedLanguage = localStorage.getItem(APP_LANGUAGE_STORAGE_KEY);
+    if (SUPPORTED_INTERFACE_LANGUAGES.has(savedLanguage)) currentInterfaceLanguage = savedLanguage;
+} catch (err) {
+    console.warn('[JĘZYK] Nie udało się odczytać ustawienia języka:', err);
+}
+
+function uiText(key, replacements = {}) {
+    const languageTable = UI_TRANSLATIONS[currentInterfaceLanguage] || UI_TRANSLATIONS.pl;
+    const template = languageTable[key] ?? UI_TRANSLATIONS.pl[key] ?? key;
+
+    return String(template).replace(/\{(\w+)\}/g, (match, name) =>
+        Object.prototype.hasOwnProperty.call(replacements, name) ? String(replacements[name]) : match
+    );
+}
+
+function setLocalizedPlaceholder(element, translationKey) {
+    if (!element) return;
+    element.dataset.i18nPlaceholderState = translationKey;
+    element.placeholder = uiText(translationKey);
+}
+
+function applyStaticInterfaceTranslations() {
+    document.documentElement.lang = currentInterfaceLanguage;
+
+    document.querySelectorAll('[data-i18n]').forEach(element => {
+        element.textContent = uiText(element.dataset.i18n);
+    });
+    document.querySelectorAll('[data-i18n-html]').forEach(element => {
+        element.innerHTML = uiText(element.dataset.i18nHtml);
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(element => {
+        element.placeholder = uiText(
+            element.dataset.i18nPlaceholderState || element.dataset.i18nPlaceholder
+        );
+    });
+    document.querySelectorAll('[data-i18n-title]').forEach(element => {
+        element.title = uiText(element.dataset.i18nTitle);
+    });
+    document.querySelectorAll('[data-i18n-aria-label]').forEach(element => {
+        element.setAttribute('aria-label', uiText(element.dataset.i18nAriaLabel));
+    });
+
+    const languageSelect = document.getElementById('app-language-select');
+    if (languageSelect) languageSelect.value = currentInterfaceLanguage;
+}
+
+function setInterfaceLanguage(language, persist = true) {
+    currentInterfaceLanguage = SUPPORTED_INTERFACE_LANGUAGES.has(language) ? language : 'pl';
+
+    if (persist) {
+        try {
+            localStorage.setItem(APP_LANGUAGE_STORAGE_KEY, currentInterfaceLanguage);
+        } catch (err) {
+            console.warn('[JĘZYK] Nie udało się zapisać ustawienia języka:', err);
+        }
+    }
+
+    applyStaticInterfaceTranslations();
+    refreshLocalizedInterface();
+}
 
 // ==========================================
 // 1. ZEGAR, GŁOŚNOŚĆ I WSPÓLNY INTERFEJS
@@ -56,11 +435,20 @@ const onboardApiWarning = document.getElementById('onboard-api-warning');
 const stationApiWarning = document.getElementById('station-api-warning');
 
 const settingsBtns = document.querySelectorAll('.settings-btn');
-const volumePanels = document.querySelectorAll('.volume-panel');
+const settingsModal = document.getElementById('settings-modal');
+const closeSettingsButton = document.getElementById('close-settings');
+const closeSettingsIcon = document.getElementById('close-settings-icon');
+const testAnnouncementBtn = document.getElementById('test-announcement-btn');
+const appLanguageSelect = document.getElementById('app-language-select');
 const volumeSlidersArray = document.querySelectorAll('.volume-slider');
 const randomStationAnnouncementsToggles = document.querySelectorAll('.random-station-announcements-toggle');
+const regionalAnnouncementModeSelects = document.querySelectorAll('.regional-announcement-mode-select');
+const longDistanceAnnouncementModeSelects = document.querySelectorAll('.long-distance-announcement-mode-select');
 
 const RANDOM_STATION_ANNOUNCEMENTS_STORAGE_KEY = 'simrail-sip:random-station-announcements-enabled';
+const REGIONAL_ANNOUNCEMENT_MODE_STORAGE_KEY = 'simrail-sip:regional-announcement-mode';
+const ANNOUNCEMENT_MODE_SYNTHESIZER = 'synthesizer';
+const ANNOUNCEMENT_MODE_RECORDED = 'recorded';
 const RANDOM_STATION_ANNOUNCEMENT_INTERVAL_MS = 5 * 60000;
 const RANDOM_STATION_ANNOUNCEMENT_RETRY_MS = 15000;
 const RANDOM_STATION_ANNOUNCEMENTS = [
@@ -102,11 +490,75 @@ randomStationAnnouncementsToggles.forEach(toggle => {
     });
 });
 
+let regionalAnnouncementMode = ANNOUNCEMENT_MODE_SYNTHESIZER;
+
+try {
+    const savedRegionalMode = localStorage.getItem(REGIONAL_ANNOUNCEMENT_MODE_STORAGE_KEY);
+    if ([ANNOUNCEMENT_MODE_SYNTHESIZER, ANNOUNCEMENT_MODE_RECORDED].includes(savedRegionalMode)) {
+        regionalAnnouncementMode = savedRegionalMode;
+    }
+} catch (err) {
+    console.warn('[ZAPOWIEDZI REGIONALNE] Nie udało się odczytać ustawienia:', err);
+}
+
+function syncRegionalAnnouncementModeSelects() {
+    regionalAnnouncementModeSelects.forEach(select => {
+        select.value = regionalAnnouncementMode;
+    });
+}
+
+syncRegionalAnnouncementModeSelects();
+longDistanceAnnouncementModeSelects.forEach(select => {
+    select.value = ANNOUNCEMENT_MODE_SYNTHESIZER;
+});
+
+regionalAnnouncementModeSelects.forEach(select => {
+    select.addEventListener('change', () => {
+        regionalAnnouncementMode = select.value === ANNOUNCEMENT_MODE_RECORDED
+            ? ANNOUNCEMENT_MODE_RECORDED
+            : ANNOUNCEMENT_MODE_SYNTHESIZER;
+
+        syncRegionalAnnouncementModeSelects();
+
+        try {
+            localStorage.setItem(REGIONAL_ANNOUNCEMENT_MODE_STORAGE_KEY, regionalAnnouncementMode);
+        } catch (err) {
+            console.warn('[ZAPOWIEDZI REGIONALNE] Nie udało się zapisać ustawienia:', err);
+        }
+    });
+});
+
+function shouldUseRegionalRecordedAnnouncements() {
+    return regionalAnnouncementMode === ANNOUNCEMENT_MODE_RECORDED;
+}
+
 let activeAudioElements = []; 
 
-settingsBtns.forEach((btn, idx) => {
-    btn.addEventListener('click', () => { volumePanels[idx].classList.toggle('hidden'); });
+function openSettingsModal() {
+    if (!settingsModal) return;
+
+    settingsModal.classList.remove('hidden');
+    requestAnimationFrame(() => closeSettingsIcon?.focus());
+}
+
+function closeSettingsModal() {
+    if (!settingsModal) return;
+
+    settingsModal.classList.add('hidden');
+}
+
+settingsBtns.forEach(btn => btn.addEventListener('click', openSettingsModal));
+closeSettingsButton?.addEventListener('click', closeSettingsModal);
+closeSettingsIcon?.addEventListener('click', closeSettingsModal);
+
+settingsModal?.addEventListener('click', (event) => {
+    if (event.target === settingsModal) closeSettingsModal();
 });
+
+appLanguageSelect?.addEventListener('change', () => {
+    setInterfaceLanguage(appLanguageSelect.value);
+});
+
 volumeSlidersArray.forEach(slider => {
     slider.addEventListener('input', (e) => { 
         currentTtsVolume = parseFloat(e.target.value); 
@@ -117,35 +569,12 @@ volumeSlidersArray.forEach(slider => {
     });
 });
 
-volumePanels.forEach((panel) => {
-    const testBtn = document.createElement('button');
-    testBtn.textContent = 'Testuj zapowiedź';
-    testBtn.style.marginTop = '15px';
-    testBtn.style.padding = '8px';
-    testBtn.style.width = '100%';
-    testBtn.style.cursor = 'pointer';
-    testBtn.style.backgroundColor = '#4CAF50';
-    testBtn.style.color = '#fff';
-    testBtn.style.border = 'none';
-    testBtn.style.borderRadius = '3px';
-    testBtn.addEventListener('click', () => {
-        playGongAndSpeak('To jest testowa zapowiedź systemu informacji pasażerskiej. Dźwięk działa poprawnie.', 'pl-PL-ZofiaNeural');
-    });
-    panel.appendChild(testBtn);
-
-    const countdownElement = document.createElement('div');
-    countdownElement.className = 'refresh-countdown';
-    countdownElement.style.marginTop = '15px';
-    countdownElement.style.color = '#ffcc00';
-    countdownElement.style.fontSize = '13px';
-    countdownElement.style.textAlign = 'center';
-    countdownElement.style.display = 'none'; 
-    countdownElement.textContent = 'Odświeżanie tablicy za: 15s';
-    panel.appendChild(countdownElement);
+testAnnouncementBtn?.addEventListener('click', () => {
+    playGongAndSpeak('To jest testowa zapowiedź systemu informacji pasażerskiej. Dźwięk działa poprawnie.', 'pl-PL-ZofiaNeural');
 });
 
 const CHANGELOG_STORAGE_KEY = 'simrail-sip:last-shown-changelog-version';
-const CHANGELOG_FALLBACK_VERSION = '2.1.4';
+const CHANGELOG_FALLBACK_VERSION = '2.2.0';
 const whatsNewModal = document.getElementById('whats-new-modal');
 const whatsNewVersion = document.getElementById('whats-new-version');
 const closeWhatsNewButton = document.getElementById('close-whats-new');
@@ -176,7 +605,7 @@ function closeWhatsNewModal() {
 
 document.querySelectorAll('.whats-new-btn').forEach((button) => {
     button.addEventListener('click', () => {
-        volumePanels.forEach(panel => panel.classList.add('hidden'));
+        closeSettingsModal();
         openWhatsNewModal();
     });
 });
@@ -189,9 +618,14 @@ whatsNewModal?.addEventListener('click', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && whatsNewModal && !whatsNewModal.classList.contains('hidden')) {
+    if (event.key !== 'Escape') return;
+
+    if (whatsNewModal && !whatsNewModal.classList.contains('hidden')) {
         closeWhatsNewModal();
+        return;
     }
+
+    if (settingsModal && !settingsModal.classList.contains('hidden')) closeSettingsModal();
 });
 
 async function initializeWhatsNew() {
@@ -204,7 +638,7 @@ async function initializeWhatsNew() {
         console.warn('[CO NOWEGO] Nie udało się pobrać wersji aplikacji:', err);
     }
 
-    if (whatsNewVersion) whatsNewVersion.textContent = `Wersja ${currentAppVersion}`;
+    if (whatsNewVersion) whatsNewVersion.textContent = uiText('whatsNew.version', { version: currentAppVersion });
 
     let lastShownVersion = null;
     try {
@@ -240,7 +674,7 @@ function getApiStatusHintElement() {
 
     hint = document.createElement('div');
     hint.id = 'api-health-hint';
-    hint.textContent = 'Kliknij po szczegóły';
+    hint.textContent = uiText('api.hint');
     hint.style.position = 'fixed';
     hint.style.left = '43px';
     hint.style.bottom = '8px';
@@ -291,7 +725,15 @@ function showApiStatusHint() {
 
 function renderApiStatusElement(el) {
     const state = el.dataset.state || 'checking';
-    const message = el.dataset.message || 'API: sprawdzanie...';
+    let replacements = {};
+    try {
+        replacements = JSON.parse(el.dataset.i18nReplacements || '{}');
+    } catch (err) {
+        console.warn('[JĘZYK] Nie udało się odczytać parametrów komunikatu API:', err);
+    }
+    const message = el.dataset.i18nKey
+        ? uiText(el.dataset.i18nKey, replacements)
+        : (el.dataset.message || uiText('api.checking'));
     const collapsed = el.dataset.collapsed === 'true';
     const color = API_STATUS_COLORS[state] || '#ffffff';
 
@@ -307,7 +749,7 @@ function renderApiStatusElement(el) {
         el.style.border = '2px solid rgba(255,255,255,0.55)';
         el.style.boxShadow = `0 0 7px ${color}`;
         el.style.color = color;
-        el.title = `${message}\nKliknij, aby rozwinąć informacje o API.`;
+        el.title = `${message}\n${uiText('api.expand')}`;
     } else {
         el.textContent = message;
         el.style.width = 'auto';
@@ -319,7 +761,7 @@ function renderApiStatusElement(el) {
         el.style.border = '1px solid rgba(255,255,255,0.18)';
         el.style.boxShadow = 'none';
         el.style.color = color;
-        el.title = 'Kliknij, aby zwinąć informacje o API do kolorowej kropki.';
+        el.title = uiText('api.collapse');
     }
 }
 
@@ -343,7 +785,9 @@ function getApiStatusElement() {
     el.style.transition = 'width 0.15s ease, height 0.15s ease, padding 0.15s ease, border-radius 0.15s ease, background 0.15s ease';
     el.dataset.collapsed = 'false';
     el.dataset.state = 'checking';
-    el.dataset.message = 'API: sprawdzanie...';
+    el.dataset.i18nKey = 'api.checking';
+    el.dataset.i18nReplacements = '{}';
+    el.dataset.message = uiText('api.checking');
 
     el.addEventListener('click', () => {
         // Od chwili ręcznej interakcji kontrolka działa już wyłącznie ręcznie.
@@ -379,25 +823,25 @@ function startApiStatusIntroIfNeeded(el) {
     }, API_STATUS_AUTO_COLLAPSE_MS);
 }
 
-function setApiHealthStatus(state, message) {
+function setApiHealthStatus(state, translationKey, replacements = {}) {
     const el = getApiStatusElement();
 
     // Zmiana stanu API aktualizuje treść/kolor, ale po zakończeniu krótkiej
     // prezentacji startowej nie rozwija kontrolki automatycznie.
     el.dataset.state = state;
-    el.dataset.message = message;
+    el.dataset.i18nKey = translationKey;
+    el.dataset.i18nReplacements = JSON.stringify(replacements);
+    el.dataset.message = uiText(translationKey, replacements);
     el.style.display = 'block';
     renderApiStatusElement(el);
     startApiStatusIntroIfNeeded(el);
 }
 
-const API_STALE_MODE_MESSAGE = 'Zewnętrzna awaria API SimRail niezależna od programu SIP. Dane mogą być nieaktualne';
-
 function setModeApiWarning(mode, visible) {
     const warning = mode === 'station' ? stationApiWarning : onboardApiWarning;
     if (!warning) return;
 
-    warning.textContent = API_STALE_MODE_MESSAGE;
+    warning.textContent = uiText('api.staleWarning');
     warning.hidden = !visible;
 }
 
@@ -630,8 +1074,7 @@ function validateActiveTrainsResponse(activeTrains) {
     const code = activeServerCode ? activeServerCode.toUpperCase() : '';
 
     if (selectedServerClockProblem) {
-        const message = `API: NIEAKTUALNE DANE${code ? ` • ${code}` : ''} — ${selectedServerClockProblem}`;
-        setApiHealthStatus('error', message);
+        setApiHealthStatus('error', code ? 'api.staleCode' : 'api.connectionError', { code });
         showApiWarningForVisibleMode();
         throw makeApiError(selectedServerClockProblem, 'STALE_API_DATA');
     }
@@ -639,8 +1082,7 @@ function validateActiveTrainsResponse(activeTrains) {
     const assessment = assessActiveTrainsFreshness(activeTrains);
 
     if (!assessment.ok) {
-        const message = `API: NIEAKTUALNE DANE${code ? ` • ${code}` : ''} — ${assessment.reason}`;
-        setApiHealthStatus('error', message);
+        setApiHealthStatus('error', code ? 'api.staleCode' : 'api.connectionError', { code });
         showApiWarningForVisibleMode();
         throw makeApiError(assessment.reason, 'STALE_API_DATA');
     }
@@ -648,10 +1090,9 @@ function validateActiveTrainsResponse(activeTrains) {
     hideApiWarnings();
 
     if (isServerClockVerified() || isLiveDataVerified()) {
-        setApiHealthStatus('ok', `API: OK${code ? ` • ${code}` : ''}`);
+        setApiHealthStatus('ok', code ? 'api.okCode' : 'api.ok', { code });
     } else {
-        const reason = assessment.reason || 'weryfikuję świeżość danych';
-        setApiHealthStatus('checking', `API: SPRAWDZANIE${code ? ` • ${code}` : ''} — ${reason}`);
+        setApiHealthStatus('checking', code ? 'api.checkingCode' : 'api.checking', { code });
     }
 
     return true;
@@ -711,7 +1152,7 @@ async function refreshSelectedServerClockHealth(force = false) {
     if (!observation.ok) {
         selectedServerClockProblem = observation.reason;
         const code = activeServerCode.toUpperCase();
-        setApiHealthStatus('error', `API: NIEAKTUALNE DANE • ${code} — ${observation.reason}`);
+        setApiHealthStatus('error', 'api.staleCode', { code });
         showApiWarningForVisibleMode();
         throw makeApiError(observation.reason, 'STALE_API_DATA');
     }
@@ -719,9 +1160,9 @@ async function refreshSelectedServerClockHealth(force = false) {
     selectedServerClockProblem = null;
 
     if (observation.pending && !isLiveDataVerified()) {
-        setApiHealthStatus('checking', `API: SPRAWDZANIE • ${activeServerCode.toUpperCase()} — ${observation.reason}`);
+        setApiHealthStatus('checking', 'api.checkingCode', { code: activeServerCode.toUpperCase() });
     } else {
-        setApiHealthStatus('ok', `API: OK • ${activeServerCode.toUpperCase()}`);
+        setApiHealthStatus('ok', 'api.okCode', { code: activeServerCode.toUpperCase() });
     }
 
     return true;
@@ -891,112 +1332,205 @@ function base64ToObjectUrl(base64, mimeType = 'audio/mpeg') {
     return URL.createObjectURL(blob);
 }
 
+const REGIONAL_RECORDED_STATION_DIRECTORY = path.join(__dirname, 'zapowiedzi', 'nazwy stacji p. regio');
+const REGIONAL_RECORDED_PHRASE_CONFIGS = Object.freeze({
+    pl: Object.freeze({ directory: 'Regio zapowiedź PL', prefix: 'r-pl' }),
+    en: Object.freeze({ directory: 'Regio zapowiedź EN', prefix: 'r-en' })
+});
+const REGIONAL_RECORDED_AUDIO_GAP_MS = 300;
+
+function getRegionalRecordedPhrases() {
+    const languageCode = currentInterfaceLanguage === 'en' ? 'en' : 'pl';
+    const config = REGIONAL_RECORDED_PHRASE_CONFIGS[languageCode];
+    const directory = path.join(__dirname, 'zapowiedzi', config.directory);
+
+    return {
+        nextStation: path.join(directory, `${config.prefix}-następna-stacja.mp3`),
+        destinationStation: path.join(directory, `${config.prefix}-stacja-docelowa.mp3`),
+        station: path.join(directory, `${config.prefix}-stacja.mp3`)
+    };
+}
+
+function normalizeRegionalRecordingKey(value) {
+    return String(value || '')
+        .normalize('NFKD')
+        .toLocaleLowerCase('pl-PL')
+        .replace(/ł/g, 'l')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+}
+
+function buildRegionalStationRecordingIndex() {
+    const index = new Map();
+
+    try {
+        if (!fs.existsSync(REGIONAL_RECORDED_STATION_DIRECTORY)) {
+            console.warn('[LEKTOR REGIONALNY] Brak folderu z nazwami stacji:', REGIONAL_RECORDED_STATION_DIRECTORY);
+            return index;
+        }
+
+        fs.readdirSync(REGIONAL_RECORDED_STATION_DIRECTORY, { withFileTypes: true })
+            .filter(entry => entry.isFile() && /^r-.+\.mp3$/i.test(entry.name))
+            .forEach(entry => {
+                const stationNameFromFile = entry.name.replace(/^r-/i, '').replace(/\.mp3$/i, '');
+                const normalizedName = normalizeRegionalRecordingKey(stationNameFromFile);
+
+                if (normalizedName && !index.has(normalizedName)) {
+                    index.set(normalizedName, path.join(REGIONAL_RECORDED_STATION_DIRECTORY, entry.name));
+                }
+            });
+
+        console.log(`[LEKTOR REGIONALNY] Wczytano ${index.size} nagrań nazw stacji.`);
+    } catch (err) {
+        console.error('[LEKTOR REGIONALNY] Nie udało się wczytać nagrań nazw stacji:', err);
+    }
+
+    return index;
+}
+
+const regionalStationRecordingIndex = buildRegionalStationRecordingIndex();
+
+function getRegionalStationRecordingPath(stationName) {
+    return regionalStationRecordingIndex.get(normalizeRegionalRecordingKey(stationName)) || null;
+}
+
+function playGongAudio() {
+    return new Promise((resolve) => {
+        const gong = new Audio('gong.mp3');
+        gong.volume = currentTtsVolume;
+        activeAudioElements.push(gong);
+
+        let finished = false;
+        const finish = () => {
+            if (finished) return;
+            finished = true;
+            activeAudioElements = activeAudioElements.filter(audio => audio !== gong);
+            clearTimeout(timeout);
+            resolve();
+        };
+
+        const timeout = setTimeout(() => {
+            console.error('Timeout awaryjny odtwarzania gongu.');
+            finish();
+        }, 5000);
+
+        gong.onended = finish;
+        gong.onerror = (err) => {
+            console.error('Błąd odtwarzania gongu:', err);
+            finish();
+        };
+
+        gong.play().catch((err) => {
+            console.error('gong.play() error:', err);
+            finish();
+        });
+    });
+}
+
+function playAudioUrl(audioUrl, { label = 'audio', tickerText = '', revokeUrl = false } = {}) {
+    return new Promise((resolve, reject) => {
+        const audio = new Audio(audioUrl);
+        audio.volume = currentTtsVolume;
+        activeAudioElements.push(audio);
+
+        let finished = false;
+        let tickerToken = null;
+
+        const cleanup = (err = null) => {
+            if (finished) return;
+            finished = true;
+
+            activeAudioElements = activeAudioElements.filter(item => item !== audio);
+            clearTimeout(timeout);
+            hideStationAnnouncementTicker(tickerToken);
+
+            try {
+                audio.pause();
+                audio.removeAttribute('src');
+                audio.load();
+            } catch (cleanupError) {}
+
+            if (revokeUrl) URL.revokeObjectURL(audioUrl);
+            if (err) reject(err);
+            else resolve();
+        };
+
+        const timeout = setTimeout(() => {
+            cleanup(new Error(`Timeout awaryjny odtwarzania: ${label}`));
+        }, 60000);
+
+        audio.onended = () => cleanup();
+        audio.onerror = () => cleanup(new Error(`Nie udało się odtworzyć: ${label}`));
+
+        if (tickerText) {
+            audio.addEventListener('playing', () => {
+                tickerToken = showStationAnnouncementTicker(tickerText, audio.duration);
+            }, { once: true });
+        }
+
+        audio.play().catch(err => cleanup(err));
+    });
+}
+
+async function playGeneratedTts(text, voice) {
+    // TTS jest generowany w procesie głównym Electron. main.js zwraca MP3
+    // jako Base64, dzięki czemu nie przekazujemy ścieżki do pliku tymczasowego.
+    const response = await ipcRenderer.invoke('generate-tts', { text, voice });
+
+    if (!response || !response.success) {
+        throw new Error(`Błąd z main.js: ${response?.error || 'brak szczegółów'}`);
+    }
+
+    if (!response.audioBase64) {
+        throw new Error('main.js nie zwrócił danych audio TTS.');
+    }
+
+    const audioUrl = base64ToObjectUrl(
+        response.audioBase64,
+        response.mimeType || 'audio/mpeg'
+    );
+
+    await playAudioUrl(audioUrl, {
+        label: 'TTS',
+        tickerText: text,
+        revokeUrl: true
+    });
+}
+
+async function playRecordedAudioFiles(audioFiles) {
+    for (let index = 0; index < audioFiles.length; index++) {
+        const audioFile = audioFiles[index];
+        await playAudioUrl(pathToFileURL(audioFile).href, {
+            label: path.basename(audioFile)
+        });
+
+        if (index < audioFiles.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, REGIONAL_RECORDED_AUDIO_GAP_MS));
+        }
+    }
+}
+
 async function processAudioQueue() {
     if (isPlayingAudio || audioQueue.length === 0) return;
     isPlayingAudio = true;
 
-    const { text, voice, withGong } = audioQueue.shift();
+    const queueItem = audioQueue.shift();
+    const { text, voice, withGong } = queueItem;
 
     try {
-        if (withGong) {
-            await new Promise((resolve) => {
-                // gong.mp3 leży obok index.html, więc używamy ścieżki względnej.
-                // Nie przekazujemy ścieżki Windows do file://.
-                const gong = new Audio('gong.mp3');
-                gong.volume = currentTtsVolume;
-                activeAudioElements.push(gong);
+        if (withGong) await playGongAudio();
 
-                let finished = false;
-                const finish = () => {
-                    if (finished) return;
-                    finished = true;
-                    activeAudioElements = activeAudioElements.filter(a => a !== gong);
-                    clearTimeout(timeout);
-                    resolve();
-                };
-
-                const timeout = setTimeout(() => {
-                    console.error('Timeout awaryjny odtwarzania gongu.');
-                    finish();
-                }, 5000);
-
-                gong.onended = finish;
-                gong.onerror = (e) => {
-                    console.error('Błąd odtwarzania gongu:', e);
-                    finish();
-                };
-
-                gong.play().catch((e) => {
-                    console.error('gong.play() error:', e);
-                    finish();
-                });
-            });
+        if (queueItem.kind === ANNOUNCEMENT_MODE_RECORDED) {
+            try {
+                await playRecordedAudioFiles(queueItem.audioFiles);
+            } catch (recordedAudioError) {
+                console.error('[LEKTOR REGIONALNY] Błąd nagrania. Używam syntezatora:', recordedAudioError);
+                await playGeneratedTts(queueItem.fallbackText, queueItem.fallbackVoice);
+            }
+        } else {
+            await playGeneratedTts(text, voice);
         }
-
-        // TTS jest generowany w procesie głównym Electron.
-        // main.js odczytuje MP3 do pamięci, usuwa plik TEMP
-        // i zwraca rendererowi Base64 zamiast ścieżki do pliku.
-        const response = await ipcRenderer.invoke('generate-tts', { text, voice });
-
-        if (!response || !response.success) {
-            throw new Error(`Błąd z main.js: ${response?.error || 'brak szczegółów'}`);
-        }
-
-        if (!response.audioBase64) {
-            throw new Error('main.js nie zwrócił danych audio TTS.');
-        }
-
-        const audioUrl = base64ToObjectUrl(
-            response.audioBase64,
-            response.mimeType || 'audio/mpeg'
-        );
-
-        await new Promise((resolve) => {
-            const audio = new Audio(audioUrl);
-            audio.volume = currentTtsVolume;
-            activeAudioElements.push(audio);
-
-            let finished = false;
-            let tickerToken = null;
-
-            const cleanup = () => {
-                if (finished) return;
-                finished = true;
-
-                activeAudioElements = activeAudioElements.filter(a => a !== audio);
-                clearTimeout(timeout);
-                hideStationAnnouncementTicker(tickerToken);
-
-                try {
-                    audio.pause();
-                    audio.removeAttribute('src');
-                    audio.load();
-                } catch (e) {}
-
-                URL.revokeObjectURL(audioUrl);
-                resolve();
-            };
-
-            const timeout = setTimeout(() => {
-                console.error('Timeout awaryjny odtwarzania TTS.');
-                cleanup();
-            }, 60000);
-
-            audio.onended = cleanup;
-            audio.onerror = (e) => {
-                console.error('Błąd odtwarzania TTS (onerror):', e);
-                cleanup();
-            };
-
-            audio.addEventListener('playing', () => {
-                tickerToken = showStationAnnouncementTicker(text, audio.duration);
-            }, { once: true });
-
-            audio.play().catch((e) => {
-                console.error('audio.play() error dla TTS:', e);
-                cleanup();
-            });
-        });
     } catch (err) {
         console.error('=== BŁĄD SYSTEMU AUDIO ===');
         console.error('Wiadomość błędu:', err?.message || err);
@@ -1024,6 +1558,63 @@ function speakText(text, voice) {
 function playGongAndSpeak(text, voice) {
     audioQueue.push({ text, voice, withGong: true });
     processAudioQueue();
+}
+
+function queueRegionalRecordedAnnouncement(audioFiles, fallbackText, fallbackVoice) {
+    const missingFile = audioFiles.find(audioFile => !audioFile || !fs.existsSync(audioFile));
+
+    if (missingFile !== undefined) {
+        console.warn(
+            '[LEKTOR REGIONALNY] Brak kompletnego zestawu nagrań. Używam syntezatora:',
+            missingFile || 'nieznana nazwa stacji'
+        );
+        speakText(fallbackText, fallbackVoice);
+        return false;
+    }
+
+    audioQueue.push({
+        kind: ANNOUNCEMENT_MODE_RECORDED,
+        audioFiles,
+        fallbackText,
+        fallbackVoice,
+        text: fallbackText,
+        voice: fallbackVoice,
+        withGong: false
+    });
+    processAudioQueue();
+    return true;
+}
+
+function announceRegionalNextStation(nextStation, destinationStation, voice) {
+    const fallbackText = `Następna stacja. ${nextStation}. Stacja docelowa. ${destinationStation}.`;
+
+    if (!shouldUseRegionalRecordedAnnouncements()) {
+        speakText(fallbackText, voice);
+        return;
+    }
+
+    const recordedPhrases = getRegionalRecordedPhrases();
+    queueRegionalRecordedAnnouncement([
+        recordedPhrases.nextStation,
+        getRegionalStationRecordingPath(nextStation),
+        recordedPhrases.destinationStation,
+        getRegionalStationRecordingPath(destinationStation)
+    ], fallbackText, voice);
+}
+
+function announceRegionalStation(stationName, voice) {
+    const fallbackText = `Stacja. ${stationName}.`;
+
+    if (!shouldUseRegionalRecordedAnnouncements()) {
+        speakText(fallbackText, voice);
+        return;
+    }
+
+    const recordedPhrases = getRegionalRecordedPhrases();
+    queueRegionalRecordedAnnouncement([
+        recordedPhrases.station,
+        getRegionalStationRecordingPath(stationName)
+    ], fallbackText, voice);
 }
 
 function stopRandomStationAnnouncements() {
@@ -1091,12 +1682,12 @@ async function fetchJsonFresh(url, label = 'API') {
         return data;
     } catch (err) {
         if (err?.name === 'AbortError') {
-            setApiHealthStatus('error', `API: BRAK ODPOWIEDZI — ${label}`);
+            setApiHealthStatus('error', 'api.noResponse');
             throw makeApiError(`${label}: przekroczono ${API_REQUEST_TIMEOUT_MS / 1000}s oczekiwania na odpowiedź API.`, 'API_TIMEOUT');
         }
 
         if (err?.code !== 'STALE_API_DATA') {
-            setApiHealthStatus('error', `API: BŁĄD POŁĄCZENIA — ${label}`);
+            setApiHealthStatus('error', 'api.connectionError');
         }
         throw err;
     } finally {
@@ -1165,9 +1756,12 @@ let refreshCountdown = 15;
 let allPassengerTrains = []; 
 let activeJourneyId = '';
 let activeTrainNumber = '';
+let activeTrainDisplayName = '';
 let activeDestination = ''; 
 let activeTrainType = ''; 
 let targetStationList = [];
+let onboardLastKnownPosition = null;
+let onboardLastDisplayedProgressRatio = 0;
 
 let activeStationName = '';
 let stationTimetable = [];
@@ -1223,8 +1817,8 @@ function updateFavoriteServerButton() {
     favoriteServerBtn.textContent = isFavorite ? '★' : '☆';
     favoriteServerBtn.classList.toggle('is-favorite', isFavorite);
     favoriteServerBtn.title = isFavorite
-        ? 'Usuń wybrany serwer z ulubionych'
-        : 'Dodaj wybrany serwer do ulubionych';
+        ? uiText('setup.removeFavoriteServer')
+        : uiText('setup.addFavoriteServer');
 }
 
 function updateFavoriteStationButton() {
@@ -1234,12 +1828,12 @@ function updateFavoriteStationButton() {
     favoriteStationBtn.textContent = isFavorite ? '★' : '☆';
     favoriteStationBtn.classList.toggle('is-favorite', isFavorite);
     favoriteStationBtn.title = isFavorite
-        ? 'Usuń wybraną stację z ulubionych'
-        : 'Dodaj wybraną stację do ulubionych';
+        ? uiText('setup.removeFavoriteStation')
+        : uiText('setup.addFavoriteStation');
 }
 
 function renderServerOptions(selectedCode = serverSelect.value) {
-    serverSelect.innerHTML = '<option value="">-- Wybierz serwer --</option>';
+    serverSelect.innerHTML = `<option value="" data-i18n="setup.selectServer">${uiText('setup.selectServer')}</option>`;
 
     [...availableServers]
         .sort((a, b) => {
@@ -1249,7 +1843,7 @@ function renderServerOptions(selectedCode = serverSelect.value) {
         .forEach(srv => {
             const opt = document.createElement('option');
             opt.value = srv.code;
-            opt.textContent = `${favoriteServerCodes.has(srv.code) ? '★ ' : ''}${srv.code.toUpperCase()} - Serwer Aktywny`;
+            opt.textContent = `${favoriteServerCodes.has(srv.code) ? '★ ' : ''}${uiText('setup.activeServer', { code: srv.code.toUpperCase() })}`;
             serverSelect.appendChild(opt);
         });
 
@@ -1283,7 +1877,8 @@ function loadStaticStations(filterText = "") {
     if (filtered.length === 0) {
         const opt = document.createElement('option');
         opt.value = "";
-        opt.textContent = "Brak stacji";
+        opt.textContent = uiText('setup.noStations');
+        opt.dataset.i18n = 'setup.noStations';
         opt.disabled = true;
         stationSelect.appendChild(opt);
     } else {
@@ -1352,8 +1947,8 @@ modeStationBtn.addEventListener('click', () => {
 
 async function loadServers() {
     try {
-        setApiHealthStatus('checking', 'API: sprawdzanie dostępności...');
-        serverSelect.innerHTML = '<option value="">Ładowanie...</option>';
+        setApiHealthStatus('checking', 'api.checkingAvailability');
+        serverSelect.innerHTML = `<option value="" data-i18n="common.loading">${uiText('common.loading')}</option>`;
         refreshServersBtn.disabled = true;
         modeSelectionDiv.classList.add('disabled');
         serversMap = {};
@@ -1368,10 +1963,10 @@ async function loadServers() {
         }
         
         trainSearch.value = '';
-        trainSearch.placeholder = '-- Wybierz serwer najpierw --';
+        setLocalizedPlaceholder(trainSearch, 'setup.selectServerFirst');
         trainSearch.disabled = true;
         trainTypeFilter.disabled = true;
-        trainSelect.innerHTML = '<option value="">-- Wybierz serwer najpierw --</option>';
+        trainSelect.innerHTML = `<option value="" data-i18n="setup.selectServerFirst">${uiText('setup.selectServerFirst')}</option>`;
         trainSelect.disabled = true;
         refreshTrainsBtn.disabled = true;
         allPassengerTrains = [];
@@ -1408,17 +2003,17 @@ async function loadServers() {
 
         renderServerOptions();
 
-        setApiHealthStatus('ok', 'API: dostępne • wybierz serwer');
+        setApiHealthStatus('ok', 'api.availableSelect');
         refreshServersBtn.disabled = false;
     } catch (err) {
         console.error('[API] Nie udało się pobrać listy serwerów:', err);
-        serverSelect.innerHTML = '<option value="">Błąd API SIT</option>';
+        serverSelect.innerHTML = `<option value="" data-i18n="setup.apiError">${uiText('setup.apiError')}</option>`;
         modeSelectionDiv.classList.add('disabled');
         stationSelect.disabled = true;
         stationSearchInput.disabled = true;
         startBtn.disabled = true;
         refreshServersBtn.disabled = false;
-        setApiHealthStatus('error', 'API: NIEDOSTĘPNE — nie udało się pobrać listy serwerów');
+        setApiHealthStatus('error', 'api.unavailable');
     }
 }
 
@@ -1440,7 +2035,7 @@ serverSelect.addEventListener('change', async () => {
         currentServerId = '';
         selectedServerClockProblem = null;
         if (serverClockHealthInterval) { clearInterval(serverClockHealthInterval); serverClockHealthInterval = null; }
-        setApiHealthStatus('ok', 'API: dostępne • wybierz serwer');
+        setApiHealthStatus('ok', 'api.availableSelect');
         updateFavoriteStationButton();
         return;
     }
@@ -1452,7 +2047,7 @@ serverSelect.addEventListener('change', async () => {
 
     selectedServerClockProblem = null;
     liveSnapshotStateByServer.delete(activeServerCode);
-    setApiHealthStatus('checking', `API: sprawdzanie ${activeServerCode.toUpperCase()}...`);
+    setApiHealthStatus('checking', 'api.checkingCode', { code: activeServerCode.toUpperCase() });
 
     try {
         // Pierwsza kontrola porównuje aktualny odczyt zegara serwera z próbką
@@ -1487,10 +2082,11 @@ serverSelect.addEventListener('change', async () => {
         startBtn.disabled = true;
 
         const reason = err?.code === 'STALE_API_DATA'
-            ? 'API zwraca nieaktualne dane. Poczekaj na przywrócenie działania i kliknij odśwież.'
-            : 'Brak poprawnego połączenia z API. Kliknij odśwież i spróbuj ponownie.';
+            ? uiText('trains.staleReason')
+            : uiText('trains.connectionReason');
 
-        trainSelect.innerHTML = `<option value="">${reason}</option>`;
+        const reasonKey = err?.code === 'STALE_API_DATA' ? 'trains.staleReason' : 'trains.connectionReason';
+        trainSelect.innerHTML = `<option value="" data-i18n="${reasonKey}">${reason}</option>`;
     }
 });
 
@@ -1530,14 +2126,17 @@ backBtns.forEach(btn => {
         if(speedValEl) speedValEl.textContent = '0';
         const ulEl = document.querySelector('.route-list ul');
         if(ulEl) ulEl.innerHTML = '';
+        resetOnboardRouteProgress();
         const tbody = document.getElementById('station-departures-body');
-        if(tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 40px;">Zatrzymano system stacyjny.</td></tr>';
+        if(tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 40px;">${uiText('station.stopped')}</td></tr>`;
         hideStationAnnouncementTicker();
         hideApiWarnings();
         setModeRefreshButtonBusy(onboardDataRefreshBtn, false);
         setModeRefreshButtonBusy(stationDataRefreshBtn, false);
         document.getElementById('departed-modal').style.display = 'none';
         document.getElementById('cancelled-modal').style.display = 'none';
+        closeSettingsModal();
+        if (whatsNewModal && !whatsNewModal.classList.contains('hidden')) closeWhatsNewModal();
         
         sipScreen.style.display = 'none';
         stationScreen.style.display = 'none';
@@ -1567,14 +2166,14 @@ function renderDepartedModal() {
     departedHistory.sort((a,b) => b.departedAt - a.departedAt);
 
     if (departedHistory.length === 0) {
-        list.innerHTML = '<li>Brak pociągów, które odjechały.</li>';
+        list.innerHTML = `<li>${uiText('history.noDispatched')}</li>`;
         return;
     }
 
     departedHistory.forEach(t => {
         const mins = Math.floor((now - t.departedAt) / 60000);
         const li = document.createElement('li');
-        li.innerHTML = `<strong>${t.time} ${t.trainName}</strong> do stacji ${t.destination} <br> <span style="color:#ffcc00">Odjechał ${mins} minut temu</span>`;
+        li.innerHTML = `<strong>${t.time} ${t.trainName}</strong> ${uiText('history.toStation', { station: t.destination })}<br><span style="color:#ffcc00">${uiText('history.departedMinutes', { minutes: mins })}</span>`;
         list.appendChild(li);
     });
 }
@@ -1606,14 +2205,14 @@ function renderCancelledModal() {
     cancelledHistory.sort((a, b) => b.cancelledAt - a.cancelledAt);
 
     if (cancelledHistory.length === 0) {
-        list.innerHTML = '<li>Brak pociągów odwołanych podczas bieżącej pracy tablicy.</li>';
+        list.innerHTML = `<li>${uiText('history.noCancelled')}</li>`;
         return;
     }
 
     cancelledHistory.forEach(t => {
         const mins = Math.max(0, Math.floor((now - t.cancelledAt) / 60000));
         const li = document.createElement('li');
-        li.innerHTML = `<strong>${t.time} ${t.trainName}</strong> do stacji ${t.destination}<br><span style="color:#ff4444">Odwołany ${mins} minut temu</span>`;
+        li.innerHTML = `<strong>${t.time} ${t.trainName}</strong> ${uiText('history.toStation', { station: t.destination })}<br><span style="color:#ff4444">${uiText('history.cancelledMinutes', { minutes: mins })}</span>`;
         list.appendChild(li);
     });
 }
@@ -1687,9 +2286,10 @@ function isExpressTrainForUi(type, ...labels) {
     const hasEip = labels.some(label => containsTrainCategory(label, 'EIP'));
     const hasMpe = labels.some(label => containsTrainCategory(label, 'MPE'));
     const hasLs = labels.some(label => containsTrainCategory(label, 'ŁS'));
+    const hasLka = labels.some(label => containsTrainCategory(label, 'ŁKA'));
 
     if (hasEip || hasMpe || isEijPendolino(type, ...labels)) return true;
-    if (hasLs || isEijRegionalLka(type, ...labels)) return false;
+    if (hasLs || hasLka || isEijRegionalLka(type, ...labels)) return false;
 
     return LONG_DISTANCE_EXPRESS_TYPES.has(String(type || '').trim());
 }
@@ -2111,15 +2711,15 @@ function buildStationLocationSpeech(t, departureContext = false) {
 
 function ensureStationPlatformTrackColumns() {
     const headerRow = document.querySelector('.plk-table thead tr');
-    if (!headerRow || headerRow.dataset.platformTrackReady === '1') return;
+    if (!headerRow) return;
 
     headerRow.innerHTML = `
-        <th style="width: 120px;">Godzina<br><span class="en">Time</span></th>
-        <th style="width: 230px;">Pociąg<br><span class="en">Train</span></th>
-        <th>Kierunek / Przez<br><span class="en">Destination / Via</span></th>
-        <th style="width: 90px; text-align: center;">Peron<br><span class="en">Platform</span></th>
-        <th style="width: 90px; text-align: center;">Tor<br><span class="en">Track</span></th>
-        <th style="width: 230px; text-align: right;">Status<br><span class="en">Status</span></th>
+        <th style="width: 120px;">${uiText('station.headerTime')}</th>
+        <th style="width: 230px;">${uiText('station.headerTrain')}</th>
+        <th>${uiText('station.headerDestination')}</th>
+        <th style="width: 90px; text-align: center;">${uiText('station.headerPlatform')}</th>
+        <th style="width: 90px; text-align: center;">${uiText('station.headerTrack')}</th>
+        <th style="width: 230px; text-align: right;">${uiText('station.headerStatus')}</th>
     `;
     headerRow.dataset.platformTrackReady = '1';
 }
@@ -2324,7 +2924,7 @@ async function startStationMode() {
     scheduleRandomStationAnnouncement();
     departedHistory = [];
     cancelledHistory = [];
-    document.querySelector('.plk-station-name').textContent = `STACJA: ${activeStationName}`;
+    document.querySelector('.plk-station-name').textContent = uiText('station.stationNamed', { station: activeStationName });
 
     document.querySelectorAll('.refresh-countdown').forEach(el => el.style.display = 'block');
     refreshCountdown = 15;
@@ -2332,7 +2932,7 @@ async function startStationMode() {
     countdownInterval = setInterval(() => {
         refreshCountdown--;
         if (refreshCountdown <= 0) refreshCountdown = 15;
-        document.querySelectorAll('.refresh-countdown').forEach(el => el.textContent = `Odświeżanie danych za: ${refreshCountdown}s`);
+        document.querySelectorAll('.refresh-countdown').forEach(el => el.textContent = uiText('station.refreshCountdown', { seconds: refreshCountdown }));
     }, 1000);
 
     await fetchStationTimetable();
@@ -2347,7 +2947,7 @@ async function startStationMode() {
 
 async function fetchStationTimetable() {
     const tbody = document.getElementById('station-departures-body');
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 40px; color: #ffcc00;">Pobieranie pełnego rozkładu stacji...</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 40px; color: #ffcc00;">${uiText('station.loadingFullSchedule')}</td></tr>`;
 
     stationTimetable = [];
     knownJourneyIds = new Set();
@@ -2369,7 +2969,7 @@ async function fetchStationTimetable() {
         syncTimeWithActiveTrains(activeTrains);
         globalActiveTrainsCount = activeTrains ? activeTrains.length : 0;
 
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 40px; color: #ffcc00;">Skanowanie mapy pociągów...<br><small style="color:#aaa;">(Wykryto ${globalActiveTrainsCount} aktywnych składów na serwerze)</small></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 40px; color: #ffcc00;">${uiText('station.scanningMap')}<br><small style="color:#aaa;">${uiText('station.detectedActive', { count: globalActiveTrainsCount })}</small></td></tr>`;
 
         await syncNewTrains(activeTrains);
         renderStationBoard();
@@ -2380,7 +2980,7 @@ async function fetchStationTimetable() {
         if (stationTimetable.length > 0) {
             renderStationBoard();
         } else {
-            const text = 'Brak danych do wyświetlenia. Użyj przycisku odświeżania.';
+            const text = uiText('station.noData');
             tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#ff5252;">${text}</td></tr>`;
         }
         return false;
@@ -2683,21 +3283,21 @@ function renderStationBoard() {
         .slice(0, 10);
 
     if (displayList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 40px; color: #8899aa;">Brak zaplanowanych przejazdów przez stację.<br><br><span style="font-size: 0.8em; opacity: 0.6;">Aktualnie na całym serwerze znajduje się ${globalActiveTrainsCount} aktywnych pociągów.</span></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 40px; color: #8899aa;">${uiText('station.emptyBoard')}<br><br><span style="font-size: 0.8em; opacity: 0.6;">${uiText('station.activeOnServer', { count: globalActiveTrainsCount })}</span></td></tr>`;
         return;
     }
 
     displayList.forEach(t => {
         const tr = document.createElement('tr');
 
-        let typeStr = 'Osobowy / Regionalny';
-        if (isEijPendolino(t.trainTypeRaw, t.trainCategory, t.trainName)) typeStr = 'Intercity / Express Premium';
-        else if (isEijRegionalLka(t.trainTypeRaw, t.trainCategory, t.trainName)) typeStr = 'Regionalny / Pośpieszny ŁKA';
-        else if (t.trainCategory.includes('EIP') || t.trainName.includes('EIP')) typeStr = 'Dalekobieżny / Intercity';
-        else if (t.trainCategory.includes('Łs') || t.trainName.includes('Łs')) typeStr = 'Pośpieszny / Osobowy';
-        else if (t.trainCategory.includes('MPE')) typeStr = 'Dalekobieżny / TLK';
-        else if (LONG_DISTANCE_EXPRESS_TYPES.has(t.trainTypeRaw)) typeStr = 'Dalekobieżny / Intercity';
-        else if (t.trainCategory.includes('ŁKA')) typeStr = 'Regionalny / Sprinter';
+        let typeStr = uiText('station.typeRegional');
+        if (isEijPendolino(t.trainTypeRaw, t.trainCategory, t.trainName)) typeStr = uiText('station.typeExpressPremium');
+        else if (isEijRegionalLka(t.trainTypeRaw, t.trainCategory, t.trainName)) typeStr = uiText('station.typeLkaExpress');
+        else if (t.trainCategory.includes('EIP') || t.trainName.includes('EIP')) typeStr = uiText('station.typeLongDistance');
+        else if (t.trainCategory.includes('Łs') || t.trainName.includes('Łs')) typeStr = uiText('station.typeFastPassenger');
+        else if (t.trainCategory.includes('MPE')) typeStr = uiText('station.typeTlk');
+        else if (LONG_DISTANCE_EXPRESS_TYPES.has(t.trainTypeRaw)) typeStr = uiText('station.typeLongDistance');
+        else if (t.trainCategory.includes('ŁKA')) typeStr = uiText('station.typeSprinter');
 
         let timeHtml = '';
         let arrHtml = formatServerTimeStr(t.rawArrTime);
@@ -2712,27 +3312,27 @@ function renderStationBoard() {
 
         if (t.rawArrTime && t.rawArrTime !== t.rawDepTime) {
             timeHtml = `<div style="line-height: 1.3; font-size: 0.9em;">
-                <div style="color: #ccc;"><small style="opacity:0.7">Przyj: </small>${arrHtml}</div>
-                <div style="color: #fff;"><small style="opacity:0.7">Odj: </small>${depHtml}</div>
+                <div style="color: #ccc;"><small style="opacity:0.7">${uiText('station.arrivalShort')} </small>${arrHtml}</div>
+                <div style="color: #fff;"><small style="opacity:0.7">${uiText('station.departureShort')} </small>${depHtml}</div>
             </div>`;
         } else {
-            timeHtml = `<div style="line-height: 1.3; font-size: 0.9em;"><small style="opacity:0.7">Odj: </small>${depHtml}</div>`;
+            timeHtml = `<div style="line-height: 1.3; font-size: 0.9em;"><small style="opacity:0.7">${uiText('station.departureShort')} </small>${depHtml}</div>`;
         }
 
         let statusHtml = '';
 
         if (t.cancelled) {
-            statusHtml = '<span style="color:#ff4444;">Odwołany</span>';
+            statusHtml = `<span style="color:#ff4444;">${uiText('station.statusCancelled')}</span>`;
         } else if (!t.seenOnMap) {
-            statusHtml = '<span style="color:#aaccff;">Zaplanowany</span>';
+            statusHtml = `<span style="color:#aaccff;">${uiText('station.statusScheduled')}</span>`;
         } else if (t.gpsStatus === 'Odjechał' || (t.gpsStatus !== 'Na stacji' && now > t.actualDepTime + STATION_DEPARTURE_FALLBACK_MS)) {
-            statusHtml = '<span style="color:#aaccff;">Odjechał</span>';
+            statusHtml = `<span style="color:#aaccff;">${uiText('station.statusDeparted')}</span>`;
         } else if (t.gpsStatus === 'Na stacji') {
-            statusHtml = '<span style="color:#00e676;">Na stacji</span>';
+            statusHtml = `<span style="color:#00e676;">${uiText('station.statusAtStation')}</span>`;
         } else if (t.delayMin > 0) {
-            statusHtml = `<span style="color:#ff4444;">Opóźniony ${t.delayMin} min</span>`;
+            statusHtml = `<span style="color:#ff4444;">${uiText('station.statusDelayed', { minutes: t.delayMin })}</span>`;
         } else {
-            statusHtml = '<span style="color:#ffcc00;">Na czas</span>';
+            statusHtml = `<span style="color:#ffcc00;">${uiText('station.statusOnTime')}</span>`;
         }
 
         const platformDisplay = t.platform || '—';
@@ -2741,7 +3341,7 @@ function renderStationBoard() {
         tr.innerHTML = `
             <td>${timeHtml}</td>
             <td><div class="plk-train-name">${t.trainName}</div><span class="plk-train-type">${typeStr}</span></td>
-            <td><div class="plk-dest">${t.destination}</div>${t.viaText ? `<span class="plk-via">przez: ${t.viaText}</span>` : ''}</td>
+            <td><div class="plk-dest">${t.destination}</div>${t.viaText ? `<span class="plk-via">${uiText('station.via', { via: t.viaText })}</span>` : ''}</td>
             <td style="text-align: center; font-weight: bold; font-size: 28px; color: #ffcc00;">${platformDisplay}</td>
             <td style="text-align: center; font-weight: bold; font-size: 28px; color: #ffcc00;">${trackDisplay}</td>
             <td style="text-align: right; font-weight: bold; font-size: 24px;">${statusHtml}</td>
@@ -3019,10 +3619,10 @@ async function loadTrainsForOnboard(serverCode) {
         if (!currentServerId) return;
 
         trainSearch.value = '';
-        trainSearch.placeholder = 'Pobieranie pociągów...';
+        setLocalizedPlaceholder(trainSearch, 'trains.loading');
         trainSearch.disabled = true;
         trainTypeFilter.disabled = true;
-        trainSelect.innerHTML = '<option value="">Pobieranie...</option>';
+        trainSelect.innerHTML = `<option value="" data-i18n="trains.loadingShort">${uiText('trains.loadingShort')}</option>`;
         trainSelect.disabled = true;
         refreshTrainsBtn.disabled = true;
         allPassengerTrains = [];
@@ -3037,8 +3637,8 @@ async function loadTrainsForOnboard(serverCode) {
         syncTimeWithActiveTrains(trains);
 
         if (!trains || trains.length === 0) {
-            trainSearch.placeholder = 'Brak pociągów na serwerze';
-            trainSelect.innerHTML = '<option value="">Brak pociągów</option>';
+            setLocalizedPlaceholder(trainSearch, 'trains.noneOnServer');
+            trainSelect.innerHTML = `<option value="" data-i18n="trains.none">${uiText('trains.none')}</option>`;
             refreshTrainsBtn.disabled = false;
             return;
         }
@@ -3046,8 +3646,8 @@ async function loadTrainsForOnboard(serverCode) {
         const passengerTrains = trains.filter(isPassengerActiveTrain);
 
         if (passengerTrains.length === 0) {
-            trainSearch.placeholder = 'Brak pociągów pasażerskich';
-            trainSelect.innerHTML = '<option value="">Brak pociągów</option>';
+            setLocalizedPlaceholder(trainSearch, 'trains.nonePassenger');
+            trainSelect.innerHTML = `<option value="" data-i18n="trains.none">${uiText('trains.none')}</option>`;
             refreshTrainsBtn.disabled = false;
             return;
         }
@@ -3059,7 +3659,7 @@ async function loadTrainsForOnboard(serverCode) {
             
             allPassengerTrains.push({
                 journeyId: t.journeyId,
-                label: `${category} ${number} (Kierunek: ${destination})`,
+                label: `${category} ${number} ${destination}`,
                 trainInfo: `${category} ${number}`,
                 destination: destination,
                 type: t.originEvent?.transport?.type,
@@ -3078,13 +3678,14 @@ async function loadTrainsForOnboard(serverCode) {
         trainTypeFilter.disabled = false;
         trainSelect.disabled = false;
         refreshTrainsBtn.disabled = false;
-        trainSearch.placeholder = 'Wpisz numer by przefiltrować...';
+        setLocalizedPlaceholder(trainSearch, 'trains.search');
         
         renderTrainOptions(); 
     } catch (err) {
         console.error('[MASZYNISTA] Błąd pobierania listy pociągów:', err);
-        trainSearch.placeholder = err?.code === 'STALE_API_DATA' ? 'API zwraca nieaktualne dane' : 'Błąd API';
-        trainSelect.innerHTML = `<option value="">${err?.code === 'STALE_API_DATA' ? 'Nieaktualne dane API' : 'Brak połączenia z API'}</option>`;
+        setLocalizedPlaceholder(trainSearch, err?.code === 'STALE_API_DATA' ? 'trains.apiStale' : 'trains.apiError');
+        const optionKey = err?.code === 'STALE_API_DATA' ? 'trains.staleOption' : 'trains.noConnection';
+        trainSelect.innerHTML = `<option value="" data-i18n="${optionKey}">${uiText(optionKey)}</option>`;
         trainSelect.disabled = true;
         trainTypeFilter.disabled = true;
         startBtn.disabled = true;
@@ -3096,12 +3697,14 @@ trainTypeFilter.addEventListener('change', () => { renderTrainOptions(trainSearc
 trainSearch.addEventListener('input', () => { renderTrainOptions(trainSearch.value); checkStartCondition(); });
 
 function renderTrainOptions(filterText = '') {
+    const selectedJourneyId = trainSelect.value;
     trainSelect.innerHTML = '';
     const lowerFilter = filterText.toLowerCase();
     const typeFilter = trainTypeFilter.value; 
 
     const filteredTrains = allPassengerTrains.filter(t => {
-        if (!t.label.toLowerCase().includes(lowerFilter)) return false;
+        const searchableLabel = `${t.trainInfo} ${t.destination}`.toLowerCase();
+        if (!searchableLabel.includes(lowerFilter)) return false;
         const info = t.trainInfo.toUpperCase();
         
         const isExpress = isExpressTrainForUi(t.type, info);
@@ -3114,18 +3717,23 @@ function renderTrainOptions(filterText = '') {
     if (filteredTrains.length === 0) {
         const opt = document.createElement('option');
         opt.value = "";
-        opt.textContent = "Brak pociągów spełniających kryteria";
+        opt.textContent = uiText('trains.noMatches');
+        opt.dataset.i18n = 'trains.noMatches';
         opt.disabled = true;
         trainSelect.appendChild(opt);
     } else {
         filteredTrains.forEach(t => {
             const opt = document.createElement('option');
             opt.value = t.journeyId;
-            opt.textContent = t.label;
+            opt.textContent = uiText('trains.option', {
+                train: t.trainInfo,
+                destination: t.destination
+            });
             opt.dataset.trainInfo = t.trainInfo;
             opt.dataset.destination = t.destination;
             opt.dataset.type = t.type;
             opt.dataset.rawNumber = t.rawNumber;
+            if (t.journeyId === selectedJourneyId) opt.selected = true;
             trainSelect.appendChild(opt);
         });
     }
@@ -3135,6 +3743,148 @@ function updateSpeedOnboard(newSpeed) {
     const speedElement = document.querySelector('.speed-value');
     if (speedElement) speedElement.textContent = Math.round(newSpeed);
 }
+
+function isValidOnboardPosition(position) {
+    return Number.isFinite(position?.lat) &&
+        Number.isFinite(position?.lon) &&
+        (position.lat !== 0 || position.lon !== 0);
+}
+
+function getOnboardRouteDistanceSummary(routeArray) {
+    const cumulativeDistances = [0];
+    let totalDistance = 0;
+
+    for (let index = 1; index < routeArray.length; index++) {
+        const previousStop = routeArray[index - 1];
+        const currentStop = routeArray[index];
+        const segmentDistance = getDistanceFromLatLonInMeters(
+            previousStop.lat,
+            previousStop.lon,
+            currentStop.lat,
+            currentStop.lon
+        );
+
+        totalDistance += Number.isFinite(segmentDistance) ? Math.max(0, segmentDistance) : 0;
+        cumulativeDistances.push(totalDistance);
+    }
+
+    return { cumulativeDistances, totalDistance };
+}
+
+function updateOnboardRouteProgress(routeArray, position = onboardLastKnownPosition) {
+    const progressContainer = document.getElementById('route-progress');
+    if (!progressContainer) return;
+
+    const percentElement = progressContainer.querySelector('.route-progress__percent');
+    const originElement = progressContainer.querySelector('.route-progress__origin');
+    const destinationElement = progressContainer.querySelector('.route-progress__destination');
+    const trackElement = progressContainer.querySelector('.route-progress__track');
+    const fillElement = progressContainer.querySelector('.route-progress__fill');
+    const markerElement = progressContainer.querySelector('.route-progress__marker');
+    const statusElement = progressContainer.querySelector('.route-progress__status');
+    const stageElement = progressContainer.querySelector('.route-progress__stage');
+
+    if (!Array.isArray(routeArray) || routeArray.length === 0) {
+        onboardLastDisplayedProgressRatio = 0;
+        percentElement.textContent = '0%';
+        originElement.textContent = '---';
+        destinationElement.textContent = '---';
+        fillElement.style.width = '0%';
+        markerElement.style.left = '0%';
+        trackElement.setAttribute('aria-valuenow', '0');
+        statusElement.textContent = uiText('route.waiting');
+        stageElement.textContent = uiText('route.zeroStations');
+        progressContainer.setAttribute('aria-label', uiText('route.progressWaitingAria'));
+        return;
+    }
+
+    const activeIndexFromState = routeArray.findIndex(stop => stop.current);
+    const activeIndex = activeIndexFromState >= 0 ? activeIndexFromState : 0;
+    const activeStop = routeArray[activeIndex];
+    const lastIndex = routeArray.length - 1;
+    const { cumulativeDistances, totalDistance } = getOnboardRouteDistanceSummary(routeArray);
+    let progressRatio = 0;
+
+    if (lastIndex === 0) {
+        progressRatio = activeStop.state === 'at-station' ? 1 : 0;
+    } else if (totalDistance > 0) {
+        if (activeStop.state === 'at-station') {
+            progressRatio = cumulativeDistances[activeIndex] / totalDistance;
+        } else if (activeIndex > 0) {
+            const previousStop = routeArray[activeIndex - 1];
+            const segmentDistance = cumulativeDistances[activeIndex] - cumulativeDistances[activeIndex - 1];
+            let segmentProgress = 0;
+
+            if (isValidOnboardPosition(position)) {
+                const distanceFromPrevious = getDistanceFromLatLonInMeters(
+                    position.lat,
+                    position.lon,
+                    previousStop.lat,
+                    previousStop.lon
+                );
+                const distanceToTarget = getDistanceFromLatLonInMeters(
+                    position.lat,
+                    position.lon,
+                    activeStop.lat,
+                    activeStop.lon
+                );
+                const distanceSum = distanceFromPrevious + distanceToTarget;
+                if (Number.isFinite(distanceSum) && distanceSum > 0) {
+                    segmentProgress = distanceFromPrevious / distanceSum;
+                }
+            }
+
+            const coveredDistance = cumulativeDistances[activeIndex - 1] +
+                segmentDistance * Math.max(0, Math.min(1, segmentProgress));
+            progressRatio = coveredDistance / totalDistance;
+        }
+    } else {
+        progressRatio = activeStop.state === 'at-station'
+            ? activeIndex / lastIndex
+            : Math.max(0, activeIndex - 1) / lastIndex;
+    }
+
+    progressRatio = Math.max(onboardLastDisplayedProgressRatio, Math.max(0, Math.min(1, progressRatio)));
+    onboardLastDisplayedProgressRatio = progressRatio;
+    const progressPercent = Math.round(progressRatio * 100);
+    const progressPosition = `${(progressRatio * 100).toFixed(1)}%`;
+    const originName = routeArray[0].station || uiText('route.originFallback');
+    const destinationName = routeArray[lastIndex].station || activeDestination || uiText('route.destinationFallback');
+    const isAtStation = activeStop.state === 'at-station';
+    const statusText = isAtStation
+        ? uiText('route.atStation', { station: activeStop.station })
+        : activeIndex === 0
+            ? uiText('route.routeStart', { station: activeStop.station })
+            : uiText('route.toStation', { station: activeStop.station });
+    const stageText = isAtStation
+        ? uiText('route.stationStage', { current: activeIndex + 1, total: routeArray.length })
+        : activeIndex === 0
+            ? uiText('route.stationStage', { current: 1, total: routeArray.length })
+            : uiText('route.segmentStage', { current: activeIndex, total: lastIndex });
+
+    percentElement.textContent = `${progressPercent}%`;
+    originElement.textContent = originName;
+    originElement.title = originName;
+    destinationElement.textContent = destinationName;
+    destinationElement.title = destinationName;
+    fillElement.style.width = progressPosition;
+    markerElement.style.left = progressPosition;
+    trackElement.setAttribute('aria-valuenow', String(progressPercent));
+    statusElement.textContent = statusText;
+    statusElement.title = statusText;
+    stageElement.textContent = stageText;
+    progressContainer.setAttribute('aria-label', uiText('route.progressValueAria', {
+        percent: progressPercent,
+        status: statusText
+    }));
+}
+
+function resetOnboardRouteProgress() {
+    onboardLastKnownPosition = null;
+    onboardLastDisplayedProgressRatio = 0;
+    updateOnboardRouteProgress([]);
+}
+
 function updateMainStationNameOnboard(name) {
     const container = document.querySelector('.next-station-container');
     const element = document.querySelector('.next-station');
@@ -3208,6 +3958,7 @@ function renderRouteUIOnboard(routeArray) {
         }
     });
     adjustRouteFontsOnboard();
+    updateOnboardRouteProgress(routeArray);
 }
 
 const ONBOARD_NEXT_STATION_DISTANCE_LONG_DISTANCE_METERS = 500;
@@ -3320,9 +4071,11 @@ function getOnboardEventDelayMinutes(event, plannedTime) {
 }
 
 async function startOnboardMode() {
+    resetOnboardRouteProgress();
     activeJourneyId = trainSelect.value;
     const selectedOption = trainSelect.options[trainSelect.selectedIndex];
     activeTrainNumber = selectedOption.dataset.rawNumber || '';
+    activeTrainDisplayName = selectedOption.dataset.trainInfo || '';
     
     activeDestination = selectedOption.dataset.destination;
     
@@ -3337,9 +4090,12 @@ async function startOnboardMode() {
     sipScreen.style.display = 'flex';
     setModeApiWarning('onboard', false);
     setModeRefreshButtonBusy(onboardDataRefreshBtn, true);
-    document.querySelector('.train-info').textContent = `${selectedOption.dataset.trainInfo} • Kierunek: ${activeDestination}`;
-    document.querySelector('.current-status .label').textContent = 'NASTĘPNA STACJA:';
-    document.querySelector('.eta-box .label').textContent = 'PLANOWY PRZYJAZD:';
+    document.querySelector('.train-info').textContent = uiText('onboard.direction', {
+        train: activeTrainDisplayName,
+        destination: activeDestination
+    });
+    document.querySelector('.current-status .label').textContent = uiText('onboard.nextStation');
+    document.querySelector('.eta-box .label').textContent = uiText('onboard.plannedArrival');
 
     let initialLat = 0, initialLon = 0;
     try {
@@ -3544,6 +4300,10 @@ async function loadJourneyRouteOnboard(journeyId, trainLat, trainLon, selectedTr
             }
         }
         
+        if (Number.isFinite(trainLat) && Number.isFinite(trainLon) && (trainLat !== 0 || trainLon !== 0)) {
+            onboardLastKnownPosition = { lat: trainLat, lon: trainLon };
+        }
+
         renderRouteUIOnboard(targetStationList);
         setTimeout(() => {
             const activeElement = document.querySelector('.route-list li.approaching') || document.querySelector('.route-list li.at-station');
@@ -3627,6 +4387,7 @@ function startOnboardLiveTracking() {
             updateSpeedOnboard(myTrain.liveData.speed);
             const currentLat = myTrain.liveData.position.latitude;
             const currentLon = myTrain.liveData.position.longitude;
+            onboardLastKnownPosition = { lat: currentLat, lon: currentLon };
             const targetStationIndex = targetStationList.findIndex(s => s.current);
             if (targetStationIndex === -1) return;
             
@@ -3641,8 +4402,11 @@ function startOnboardLiveTracking() {
                 const nextStationAnnouncementDistance = getOnboardNextStationAnnouncementDistanceMeters();
                 if (distFromPrev >= nextStationAnnouncementDistance && !targetStation.departureAnnounced && !targetStation.arrivalPlayed) {
                     targetStation.departureAnnounced = true;
-                    const nextMsg = currentIsIntercity ? `Witamy Państwa na pokładzie pociągu intercity do stacji ${activeDestination}. Następna stacja ${targetStation.station}.` : `Następna stacja. ${targetStation.station}. Stacja docelowa. ${activeDestination}.`;
-                    speakText(nextMsg, assignedVoice);
+                    if (currentIsIntercity) {
+                        speakText(`Witamy Państwa na pokładzie pociągu intercity do stacji ${activeDestination}. Następna stacja ${targetStation.station}.`, assignedVoice);
+                    } else {
+                        announceRegionalNextStation(targetStation.station, activeDestination, assignedVoice);
+                    }
                 }
                 if (currentHasWars && distFromPrev >= 2000 && !targetStation.warsAnnounced && !targetStation.arrivalPlayed) {
                     targetStation.warsAnnounced = true;
@@ -3653,11 +4417,14 @@ function startOnboardLiveTracking() {
             if (distMeters <= 700 && !targetStation.arrivalPlayed) {
                 targetStation.arrivalPlayed = true;
                 targetStation.state = 'at-station';
-                document.querySelector('.current-status .label').textContent = 'STACJA:';
-                document.querySelector('.eta-box .label').textContent = 'PLANOWY ODJAZD:';
+                document.querySelector('.current-status .label').textContent = uiText('onboard.station');
+                document.querySelector('.eta-box .label').textContent = uiText('onboard.plannedDeparture');
                 renderRouteUIOnboard(targetStationList);
-                const msg = currentIsIntercity ? `Szanowni państwo zbliżamy się do stacji ${targetStation.station}. Osoby wysiadające prosimy o zabranie bagażu oraz rzeczy osobistych. Dziękujemy za wspólną podróż i życzymy miłego pobytu.` : `Stacja. ${targetStation.station}.`;
-                speakText(msg, assignedVoice);
+                if (currentIsIntercity) {
+                    speakText(`Szanowni państwo zbliżamy się do stacji ${targetStation.station}. Osoby wysiadające prosimy o zabranie bagażu oraz rzeczy osobistych. Dziękujemy za wspólną podróż i życzymy miłego pobytu.`, assignedVoice);
+                } else {
+                    announceRegionalStation(targetStation.station, assignedVoice);
+                }
             }
             
             if (distMeters > 150 && targetStation.arrivalPlayed && distMeters > targetStation.minDistance + 100) {
@@ -3667,13 +4434,15 @@ function startOnboardLiveTracking() {
                     nextStation.current = true;
                     targetStation.state = 'inactive';
                     nextStation.state = 'approaching';
-                    document.querySelector('.current-status .label').textContent = 'NASTĘPNA STACJA:';
-                    document.querySelector('.eta-box .label').textContent = 'PLANOWY PRZYJAZD:';
+                    document.querySelector('.current-status .label').textContent = uiText('onboard.nextStation');
+                    document.querySelector('.eta-box .label').textContent = uiText('onboard.plannedArrival');
                     renderRouteUIOnboard(targetStationList);
                     const activeElement = document.querySelector('.route-list li.approaching');
                     if (activeElement) activeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
             }
+
+            updateOnboardRouteProgress(targetStationList, onboardLastKnownPosition);
         } catch (err) {
             console.error('[MASZYNISTA] Błąd pętli live tracking:', err);
             handleVisibleModeApiError(err);
@@ -3681,5 +4450,71 @@ function startOnboardLiveTracking() {
     }, 5000); 
 }
 
+function refreshLocalizedInterface() {
+    if (whatsNewVersion) {
+        whatsNewVersion.textContent = uiText('whatsNew.version', { version: currentAppVersion });
+    }
+
+    const apiStatusHint = document.getElementById('api-health-hint');
+    if (apiStatusHint) apiStatusHint.textContent = uiText('api.hint');
+
+    const apiStatus = document.getElementById('api-health-status');
+    if (apiStatus) renderApiStatusElement(apiStatus);
+
+    setModeApiWarning('station', stationApiWarning ? !stationApiWarning.hidden : false);
+    setModeApiWarning('onboard', onboardApiWarning ? !onboardApiWarning.hidden : false);
+
+    updateFavoriteServerButton();
+    updateFavoriteStationButton();
+
+    if (availableServers.length > 0) renderServerOptions(serverSelect.value);
+    loadStaticStations(stationSearchInput.value);
+
+    if (allPassengerTrains.length > 0 && !trainSelect.disabled) {
+        renderTrainOptions(trainSearch.value);
+    }
+
+    ensureStationPlatformTrackColumns();
+
+    if (activeStationName) {
+        document.querySelector('.plk-station-name').textContent = uiText('station.stationNamed', {
+            station: activeStationName
+        });
+    }
+
+    document.querySelectorAll('.refresh-countdown').forEach(element => {
+        element.textContent = uiText('station.refreshCountdown', { seconds: refreshCountdown });
+    });
+
+    if (stationScreen.style.display !== 'none') {
+        renderStationBoard();
+        if (document.getElementById('departed-modal').style.display === 'flex') renderDepartedModal();
+        if (document.getElementById('cancelled-modal').style.display === 'flex') renderCancelledModal();
+    }
+
+    if (sipScreen.style.display !== 'none') {
+        const trainInfo = document.querySelector('.train-info');
+        if (trainInfo && activeTrainDisplayName) {
+            trainInfo.textContent = uiText('onboard.direction', {
+                train: activeTrainDisplayName,
+                destination: activeDestination
+            });
+        }
+
+        const activeStop = targetStationList.find(stop => stop.current);
+        const isAtStation = activeStop?.state === 'at-station';
+        document.querySelector('.current-status .label').textContent = uiText(
+            isAtStation ? 'onboard.station' : 'onboard.nextStation'
+        );
+        document.querySelector('.eta-box .label').textContent = uiText(
+            isAtStation ? 'onboard.plannedDeparture' : 'onboard.plannedArrival'
+        );
+        renderRouteUIOnboard(targetStationList);
+    } else {
+        updateOnboardRouteProgress(targetStationList);
+    }
+}
+
 // Inicjalizacja ładowania serwerów na starcie
+setInterfaceLanguage(currentInterfaceLanguage, false);
 loadServers();

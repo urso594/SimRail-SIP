@@ -7,102 +7,114 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="watermark">SimRail SIP by Urso V2.1.4</div>
+    <div class="watermark">SimRail SIP by Urso V2.2.0</div>
 
     <div id="setup-screen" class="setup-container">
+        <button class="settings-btn setup-settings-btn" type="button" title="Ustawienia" aria-label="Otwórz ustawienia" data-i18n-title="settings.open" data-i18n-aria-label="settings.openAria">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.21-.07.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        </button>
         <h1>SimRail SIP by Urso</h1>
         
         <div class="form-group">
-            <label for="server-select">Serwer:</label>
+            <label for="server-select" data-i18n="setup.server">Serwer:</label>
             <div class="input-row">
                 <select id="server-select">
-                    <option value="">Ładowanie...</option>
+                    <option value="" data-i18n="common.loading">Ładowanie...</option>
                 </select>
                 <button id="favorite-server-btn" class="icon-btn favorite-btn" type="button" title="Dodaj wybrany serwer do ulubionych" disabled>☆</button>
-                <button id="refresh-servers-btn" class="icon-btn" title="Odśwież listę serwerów">↻</button>
+                <button id="refresh-servers-btn" class="icon-btn" title="Odśwież listę serwerów" data-i18n-title="setup.refreshServers">↻</button>
             </div>
         </div>
 
         <div class="mode-selection disabled" id="mode-selection">
-            <button id="mode-onboard-btn" class="mode-btn active">🚆 Tryb Pokładowy<br><span>(Dla Maszynisty)</span></button>
-            <button id="mode-station-btn" class="mode-btn">🚉 Tryb Stacyjny<br><span>(Dla Dyżurnego)</span></button>
+            <button id="mode-onboard-btn" class="mode-btn active" data-i18n-html="setup.onboardMode">🚆 Tryb Pokładowy<br><span>(Dla Maszynisty)</span></button>
+            <button id="mode-station-btn" class="mode-btn" data-i18n-html="setup.stationMode">🚉 Tryb Stacyjny<br><span>(Dla Dyżurnego)</span></button>
         </div>
 
         <div id="onboard-setup" class="form-group">
-            <label>Pociąg:</label>
+            <label data-i18n="setup.train">Pociąg:</label>
             <div class="train-selector">
                 <div class="input-row" style="margin-bottom: 5px;">
                     <select id="train-type-filter" disabled>
-                        <option value="ALL">Wszystkie rodzaje</option>
-                        <option value="EXPRESS">Dalekobieżne (Intercity / TLK)</option>
-                        <option value="REGIONAL">Regionalne i Osobowe</option>
+                        <option value="ALL" data-i18n="setup.filterAll">Wszystkie rodzaje</option>
+                        <option value="EXPRESS" data-i18n="setup.filterExpress">Dalekobieżne (Intercity / TLK)</option>
+                        <option value="REGIONAL" data-i18n="setup.filterRegional">Regionalne i Osobowe</option>
                     </select>
-                    <button id="refresh-trains-btn" class="icon-btn" title="Odśwież listę pociągów" disabled>↻</button>
+                    <button id="refresh-trains-btn" class="icon-btn" title="Odśwież listę pociągów" data-i18n-title="setup.refreshTrains" disabled>↻</button>
                 </div>
-                <input type="text" id="train-search" placeholder="Wpisz numer by przefiltrować..." disabled autocomplete="off">
+                <input type="text" id="train-search" placeholder="Wpisz numer by przefiltrować..." data-i18n-placeholder="setup.trainSearch" disabled autocomplete="off">
                 <select id="train-select" size="5" disabled>
-                    <option value="">-- Wybierz serwer najpierw --</option>
+                    <option value="" data-i18n="setup.selectServerFirst">-- Wybierz serwer najpierw --</option>
                 </select>
             </div>
         </div>
 
         <div id="station-setup" class="form-group" style="display: none;">
-            <label>Wybierz stację:</label>
+            <label data-i18n="setup.selectStation">Wybierz stację:</label>
             <div class="station-search-row">
-                <input type="text" id="station-search" placeholder="Wpisz nazwę by przefiltrować..." autocomplete="off" disabled>
+                <input type="text" id="station-search" placeholder="Wpisz nazwę by przefiltrować..." data-i18n-placeholder="setup.stationSearch" autocomplete="off" disabled>
                 <button id="favorite-station-btn" class="icon-btn favorite-btn" type="button" title="Dodaj wybraną stację do ulubionych" disabled>☆</button>
             </div>
             <select id="station-select" disabled>
-                <option value="">-- Wybierz serwer najpierw --</option>
+                <option value="" data-i18n="setup.selectServerFirst">-- Wybierz serwer najpierw --</option>
             </select>
         </div>
 
-        <button id="start-btn" disabled>Uruchom System SIP</button>
+        <button id="start-btn" disabled data-i18n="setup.start">Uruchom System SIP</button>
     </div>
 
     <!-- EKRAN POKŁADOWY -->
     <div id="sip-screen" class="sip-container" style="display: none;">
         <header class="sip-header">
             <div class="sip-header-left">
-                <button class="back-btn" title="Powrót do wyboru">
+                <button class="back-btn" title="Powrót do wyboru" data-i18n-title="common.back">
                     <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
                 </button>
-                <div class="train-info">Wczytywanie...</div>
+                <div class="train-info" data-i18n="common.loadingData">Wczytywanie...</div>
             </div>
             <div class="sip-header-right">
-                <button id="onboard-data-refresh-btn" class="icon-btn mode-data-refresh-btn" type="button" title="Odśwież dane pociągu" aria-label="Odśwież dane pociągu">
+                <button id="onboard-data-refresh-btn" class="icon-btn mode-data-refresh-btn" type="button" title="Odśwież dane pociągu" aria-label="Odśwież dane pociągu" data-i18n-title="onboard.refresh" data-i18n-aria-label="onboard.refresh">
                     <span aria-hidden="true">↻</span>
                 </button>
                 <div class="clock">00<span class="blink">:</span>00</div>
                 <div class="settings-container-inline">
-                    <button class="settings-btn" title="Ustawienia">
+                    <button class="settings-btn" type="button" title="Ustawienia" aria-label="Otwórz ustawienia" data-i18n-title="settings.open" data-i18n-aria-label="settings.openAria">
                         <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.21-.07.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
                     </button>
-                    <div class="volume-panel hidden">
-                        <label>Głośność komunikatów</label>
-                        <input type="range" class="volume-slider" min="0" max="1" step="0.1" value="1">
-                        <label class="settings-toggle-row">
-                            <input class="random-station-announcements-toggle" type="checkbox" checked>
-                            <span>Losowe komunikaty co 5 minut</span>
-                        </label>
-                        <button type="button" class="settings-action-btn whats-new-btn">Co nowego?</button>
-                    </div>
                 </div>
             </div>
         </header>
 
-        <div id="onboard-api-warning" class="mode-api-warning" role="alert" hidden>Zewnętrzna awaria API SimRail niezależna od programu SIP. Dane mogą być nieaktualne</div>
+        <div id="onboard-api-warning" class="mode-api-warning" role="alert" hidden data-i18n="api.staleWarning">Zewnętrzna awaria API SimRail niezależna od programu SIP. Dane mogą być nieaktualne</div>
 
         <main class="sip-content">
             <section class="current-status">
-                <div class="label" id="status-label">NASTĘPNA STACJA:</div>
+                <div class="label" id="status-label" data-i18n="onboard.nextStation">NASTĘPNA STACJA:</div>
                 <div class="next-station-container"><div class="next-station">...</div></div>
                 <div class="details-row">
                     <div class="eta-box">
-                        <span class="label" id="time-label" style="font-size: 24px;">PLANOWY PRZYJAZD:</span>
+                        <span class="label" id="time-label" style="font-size: 24px;" data-i18n="onboard.plannedArrival">PLANOWY PRZYJAZD:</span>
                         <div class="eta"><span class="time">--:--</span></div>
                     </div>
                     <div class="speed-box"><span class="speed-value">0</span><span class="speed-unit"> km/h</span></div>
+                </div>
+                <div id="route-progress" class="route-progress" aria-label="Postęp trasy" data-i18n-aria-label="route.progressAria">
+                    <div class="route-progress__header">
+                        <span data-i18n="route.progress">POSTĘP TRASY</span>
+                        <span class="route-progress__percent">0%</span>
+                    </div>
+                    <div class="route-progress__stations">
+                        <span class="route-progress__origin">---</span>
+                        <span class="route-progress__destination">---</span>
+                    </div>
+                    <div class="route-progress__track" role="progressbar" aria-label="Przybliżony postęp trasy" data-i18n-aria-label="route.approximateProgress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                        <div class="route-progress__fill"></div>
+                        <div class="route-progress__marker" aria-hidden="true">🚆</div>
+                    </div>
+                    <div class="route-progress__footer">
+                        <span class="route-progress__status" data-i18n="route.waiting">Oczekiwanie na dane trasy</span>
+                        <span class="route-progress__stage" data-i18n="route.zeroStations">0 z 0 stacji</span>
+                    </div>
                 </div>
             </section>
             <aside class="route-list"><ul></ul></aside>
@@ -113,52 +125,43 @@
     <div id="station-screen" class="station-board-container" style="display: none;">
         <header class="plk-header">
             <div class="plk-left">
-                <button class="back-btn plk-back" title="Powrót do wyboru">
+                <button class="back-btn plk-back" title="Powrót do wyboru" data-i18n-title="common.back">
                     <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
                 </button>
-                <div class="plk-station-name">STACJA: ---</div>
+                <div class="plk-station-name" data-i18n="station.stationEmpty">STACJA: ---</div>
             </div>
             <div class="plk-right">
-                <button id="station-data-refresh-btn" class="icon-btn mode-data-refresh-btn" type="button" title="Odśwież dane tablicy" aria-label="Odśwież dane tablicy">
+                <button id="station-data-refresh-btn" class="icon-btn mode-data-refresh-btn" type="button" title="Odśwież dane tablicy" aria-label="Odśwież dane tablicy" data-i18n-title="station.refresh" data-i18n-aria-label="station.refresh">
                     <span aria-hidden="true">↻</span>
                 </button>
                 <div class="station-history-actions">
-                    <button id="departed-btn" class="icon-btn station-history-btn" type="button">Odprawione Pociągi</button>
-                    <button id="cancelled-btn" class="icon-btn station-history-btn" type="button">Pociągi odwołane</button>
+                    <button id="departed-btn" class="icon-btn station-history-btn" type="button" data-i18n="station.dispatchedTrains">Odprawione Pociągi</button>
+                    <button id="cancelled-btn" class="icon-btn station-history-btn" type="button" data-i18n="station.cancelledTrains">Pociągi odwołane</button>
                 </div>
                 <div class="clock plk-clock">00<span class="blink">:</span>00</div>
                 <div class="settings-container-inline" style="margin-left: 20px;">
-                    <button class="settings-btn plk-settings" title="Ustawienia">
+                    <button class="settings-btn plk-settings" type="button" title="Ustawienia" aria-label="Otwórz ustawienia" data-i18n-title="settings.open" data-i18n-aria-label="settings.openAria">
                         <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.21-.07.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
                     </button>
-                    <div class="volume-panel hidden">
-                        <label>Głośność komunikatów</label>
-                        <input type="range" class="volume-slider" min="0" max="1" step="0.1" value="1">
-                        <label class="settings-toggle-row">
-                            <input class="random-station-announcements-toggle" type="checkbox" checked>
-                            <span>Losowe komunikaty co 5 minut</span>
-                        </label>
-                        <button type="button" class="settings-action-btn whats-new-btn">Co nowego?</button>
-                    </div>
                 </div>
             </div>
         </header>
 
-        <div id="station-api-warning" class="mode-api-warning" role="alert" hidden>Zewnętrzna awaria API SimRail niezależna od programu SIP. Dane mogą być nieaktualne</div>
+        <div id="station-api-warning" class="mode-api-warning" role="alert" hidden data-i18n="api.staleWarning">Zewnętrzna awaria API SimRail niezależna od programu SIP. Dane mogą być nieaktualne</div>
 
         <div class="plk-board">
-            <div class="plk-board-title">ODJAZDY / DEPARTURES</div>
+            <div class="plk-board-title" data-i18n="station.departuresTitle">ODJAZDY / DEPARTURES</div>
             <table class="plk-table">
                 <thead>
                     <tr>
-                        <th style="width: 120px;">Godzina<br><span class="en">Time</span></th>
-                        <th style="width: 250px;">Pociąg<br><span class="en">Train</span></th>
-                        <th>Kierunek / Przez<br><span class="en">Destination / Via</span></th>
-                        <th style="width: 250px; text-align: right;">Status<br><span class="en">Status</span></th>
+                        <th style="width: 120px;" data-i18n-html="station.headerTime">Godzina<br><span class="en">Time</span></th>
+                        <th style="width: 250px;" data-i18n-html="station.headerTrain">Pociąg<br><span class="en">Train</span></th>
+                        <th data-i18n-html="station.headerDestination">Kierunek / Przez<br><span class="en">Destination / Via</span></th>
+                        <th style="width: 250px; text-align: right;" data-i18n-html="station.headerStatus">Status<br><span class="en">Status</span></th>
                     </tr>
                 </thead>
                 <tbody id="station-departures-body">
-                    <tr><td colspan="4" style="text-align:center; padding: 40px;">Pobieranie rozkładu jazdy dla stacji...</td></tr>
+                    <tr><td colspan="4" style="text-align:center; padding: 40px;" data-i18n="station.loadingSchedule">Pobieranie rozkładu jazdy dla stacji...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -167,36 +170,100 @@
     <!-- MODAL - POCIĄGI ODJECHANE -->
     <div id="departed-modal" class="modal hidden">
         <div class="modal-content">
-            <h2>Pociągi, które odjechały</h2>
+            <h2 data-i18n="history.dispatchedTitle">Pociągi, które odjechały</h2>
             <ul id="departed-list"></ul>
-            <button id="close-modal" class="mode-btn">Zamknij</button>
+            <button id="close-modal" class="mode-btn" data-i18n="common.close">Zamknij</button>
         </div>
     </div>
 
     <!-- MODAL - POCIĄGI ODWOŁANE -->
     <div id="cancelled-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="cancelled-modal-title">
         <div class="modal-content">
-            <h2 id="cancelled-modal-title">Pociągi odwołane</h2>
+            <h2 id="cancelled-modal-title" data-i18n="history.cancelledTitle">Pociągi odwołane</h2>
             <ul id="cancelled-list"></ul>
-            <button id="close-cancelled-modal" class="mode-btn" type="button">Zamknij</button>
+            <button id="close-cancelled-modal" class="mode-btn" type="button" data-i18n="common.close">Zamknij</button>
+        </div>
+    </div>
+
+    <!-- MODAL - USTAWIENIA -->
+    <div id="settings-modal" class="modal settings-modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+        <div class="modal-content settings-modal-content">
+            <button id="close-settings-icon" class="whats-new-close-icon" type="button" aria-label="Zamknij ustawienia" data-i18n-aria-label="settings.closeAria">&times;</button>
+            <div class="settings-modal-heading">
+                <h2 id="settings-modal-title" data-i18n="settings.title">Ustawienia</h2>
+                <p data-i18n="settings.subtitle">Dostosuj język, dźwięk oraz sposób odtwarzania zapowiedzi.</p>
+            </div>
+            <div class="settings-modal-grid">
+                <section class="settings-card">
+                    <h3 data-i18n="settings.applicationAndSound">Program i dźwięk</h3>
+                    <label class="announcement-mode-setting">
+                        <span data-i18n="settings.interfaceLanguage">Język programu</span>
+                        <select id="app-language-select" aria-label="Język programu" data-i18n-aria-label="settings.interfaceLanguage">
+                            <option value="pl" data-i18n="settings.languagePolish">Polski</option>
+                            <option value="en" data-i18n="settings.languageEnglish">English</option>
+                        </select>
+                    </label>
+                    <label class="settings-field" for="settings-volume-slider">
+                        <span data-i18n="settings.volume">Głośność komunikatów</span>
+                        <input id="settings-volume-slider" type="range" class="volume-slider" min="0" max="1" step="0.1" value="1">
+                    </label>
+                    <button id="test-announcement-btn" type="button" class="settings-test-btn" data-i18n="settings.testAnnouncement">Testuj zapowiedź</button>
+                </section>
+
+                <section class="settings-card">
+                    <h3 data-i18n="settings.stationMessages">Komunikaty stacyjne</h3>
+                    <label class="settings-toggle-row">
+                        <input class="random-station-announcements-toggle" type="checkbox" checked>
+                        <span data-i18n="settings.randomMessages">Losowe komunikaty co 5 minut</span>
+                    </label>
+                    <div id="settings-refresh-countdown" class="refresh-countdown" data-i18n="settings.refreshCountdownInitial">Odświeżanie tablicy za: 15s</div>
+                </section>
+
+                <section class="settings-card settings-card-wide">
+                    <h3 data-i18n="settings.onboardAnnouncements">Zapowiedzi pokładowe</h3>
+                    <div class="announcement-settings-section">
+                        <label class="announcement-mode-setting">
+                            <span data-i18n="settings.regionalAnnouncements">Zapowiedzi regionalne</span>
+                            <select class="regional-announcement-mode-select" aria-label="Sposób odtwarzania zapowiedzi regionalnych" data-i18n-aria-label="settings.regionalAnnouncementsAria">
+                                <option value="synthesizer" data-i18n="settings.synthesizer">Syntezator</option>
+                                <option value="recorded" data-i18n="settings.recordedVoice">Lektor</option>
+                            </select>
+                        </label>
+                        <label class="announcement-mode-setting">
+                            <span data-i18n="settings.longDistanceAnnouncements">Zapowiedzi dalekobieżne</span>
+                            <select class="long-distance-announcement-mode-select" aria-label="Sposób odtwarzania zapowiedzi dalekobieżnych" data-i18n-aria-label="settings.longDistanceAnnouncementsAria">
+                                <option value="synthesizer" data-i18n="settings.synthesizer">Syntezator</option>
+                                <option value="recorded" disabled data-i18n="settings.recordedSoon">Lektor — dostępne wkrótce</option>
+                            </select>
+                        </label>
+                        <p class="settings-note" data-i18n="settings.synthPolishOnly">Syntezator odtwarza wszystkie zapowiedzi wyłącznie po polsku.</p>
+                        <p class="settings-note" data-i18n="settings.recordedLanguageInfo">Lektor używa języka programu, a nazwy stacji pozostają wymawiane po polsku.</p>
+                    </div>
+                </section>
+            </div>
+            <div class="settings-modal-actions">
+                <button type="button" class="settings-action-btn whats-new-btn" data-i18n="settings.whatsNew">Co nowego?</button>
+                <button id="close-settings" class="mode-btn settings-close-btn" type="button" data-i18n="common.close">Zamknij</button>
+            </div>
         </div>
     </div>
 
     <!-- MODAL - CO NOWEGO -->
     <div id="whats-new-modal" class="modal whats-new-modal hidden" role="dialog" aria-modal="true" aria-labelledby="whats-new-title">
         <div class="modal-content whats-new-content">
-            <button id="close-whats-new-icon" class="whats-new-close-icon" type="button" aria-label="Zamknij okno">&times;</button>
+            <button id="close-whats-new-icon" class="whats-new-close-icon" type="button" aria-label="Zamknij okno" data-i18n-aria-label="common.closeWindow">&times;</button>
             <div class="whats-new-heading">
-                <span id="whats-new-version" class="whats-new-version">Wersja 2.1.4</span>
-                <h2 id="whats-new-title">Co nowego w SimRail SIP by Urso?</h2>
-                <p>Najważniejsze zmiany i usprawnienia w tej wersji programu.</p>
+                <span id="whats-new-version" class="whats-new-version">Wersja 2.2.0</span>
+                <h2 id="whats-new-title" data-i18n="whatsNew.title">Co nowego w SimRail SIP by Urso?</h2>
+                <p data-i18n="whatsNew.subtitle">Najważniejsze zmiany i usprawnienia w tej wersji programu.</p>
             </div>
             <ul class="whats-new-list">
-                <li><strong>Awaria API SimRail:</strong> tablica stacyjna i ekran maszynisty pozostają włączone z ostatnimi dostępnymi danymi. Na ekranie pojawia się ostrzeżenie, że dane mogą być nieaktualne, a po odzyskaniu prawidłowego połączenia komunikat znika automatycznie.</li>
-                <li><strong>Ręczne odświeżanie:</strong> na tablicy stacyjnej i w trybie maszynisty dodano przycisk pozwalający ponownie pobrać dane bez wychodzenia do ekranu głównego.</li>
-                <li><strong>Nowa ikona programu:</strong> aplikacja, skróty oraz instalator otrzymały nową ikonę SimRail SIP by Urso.</li>
+                <li data-i18n-html="whatsNew.regionalVoice"><strong>Profesjonalny lektor regionalny:</strong> nowy sposób odtwarzania zapowiedzi dla pociągów regionalnych i ŁKA Sprinter, z naturalnymi nagraniami oraz odstępem między kolejnymi częściami komunikatu. Dotychczasowy syntezator nadal pozostaje dostępny.</li>
+                <li data-i18n-html="whatsNew.interfaceLanguage"><strong>Polski i angielski interfejs:</strong> język programu można zmienić w ustawieniach bez ponownego uruchamiania. Nazwy stacji pozostają po polsku, a lektor korzysta z polskich lub angielskich zwrotów zgodnie z wybranym językiem.</li>
+                <li data-i18n-html="whatsNew.settingsWindow"><strong>Rozbudowane ustawienia:</strong> ustawienia są teraz dostępne również na ekranie głównym i otwierają się w większym, czytelniejszym oknie z osobnymi opcjami zapowiedzi regionalnych i dalekobieżnych.</li>
+                <li data-i18n-html="whatsNew.routeProgress"><strong>Postęp trasy:</strong> ekran maszynisty pokazuje przybliżony postęp przejazdu, bieżący odcinek lub stację oraz początek i koniec trasy.</li>
             </ul>
-            <button id="close-whats-new" class="mode-btn whats-new-confirm" type="button">Rozumiem</button>
+            <button id="close-whats-new" class="mode-btn whats-new-confirm" type="button" data-i18n="whatsNew.confirm">Rozumiem</button>
         </div>
     </div>
 

@@ -83,11 +83,17 @@ body { background-color: #0d1117; color: #ffffff; height: 100vh; overflow: hidde
 .settings-btn { background: rgba(255, 255, 255, 0.1); border: none; border-radius: 50%; width: 45px; height: 45px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.3s, transform 0.3s; }
 .settings-btn:hover { background: rgba(255, 255, 255, 0.2); transform: rotate(90deg); }
 .settings-btn svg { width: 28px; height: 28px; fill: #a3b8cc; }
-.volume-panel { position: absolute; top: 55px; right: 0; background: rgba(26, 34, 45, 0.95); padding: 15px 20px; border-radius: 8px; border: 1px solid #334; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); transition: opacity 0.3s, transform 0.3s; transform-origin: top right; z-index: 1000; width: 220px;}
-.volume-panel.hidden { opacity: 0; pointer-events: none; transform: scale(0.9); }
-.volume-panel label { font-size: 14px; color: #a3b8cc; white-space: nowrap; }
-.volume-panel .settings-toggle-row { display: flex; align-items: flex-start; gap: 9px; padding: 7px 0; color: #ffffff; white-space: normal; line-height: 1.35; cursor: pointer; }
+.setup-settings-btn { position: absolute; top: 22px; right: 24px; width: 50px; height: 50px; background: #1a222d; border: 2px solid #334; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32); z-index: 10; }
+.setup-settings-btn:hover { background: #2a3545; border-color: #4a5c70; }
+.settings-toggle-row { display: flex; align-items: flex-start; gap: 10px; color: #ffffff; line-height: 1.4; cursor: pointer; }
 .settings-toggle-row input { width: 17px; height: 17px; margin-top: 1px; flex-shrink: 0; accent-color: #00e676; cursor: pointer; }
+.announcement-settings-section { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; border-top: 1px solid #3a4657; }
+.announcement-mode-setting { display: flex; flex-direction: column; gap: 7px; color: #ffffff; font-weight: 600; }
+.announcement-mode-setting select { width: 100%; padding: 8px 9px; border: 1px solid #4a5c70; border-radius: 5px; background: #111923; color: #ffffff; font-size: 14px; cursor: pointer; outline: none; }
+.announcement-mode-setting select:focus { border-color: #ffcc00; }
+.announcement-mode-setting option:disabled { color: #7f8a96; }
+.settings-note { color: #a3b8cc; font-size: 13px; line-height: 1.45; }
+.settings-note + .settings-note { margin-top: -5px; }
 .settings-action-btn { width: 100%; padding: 9px 12px; margin-top: 3px; border: 1px solid #4a5c70; border-radius: 5px; background: #253244; color: #ffffff; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s, border-color 0.2s; }
 .settings-action-btn:hover { background: #33445b; border-color: #ffcc00; }
 
@@ -120,6 +126,22 @@ body { background-color: #0d1117; color: #ffffff; height: 100vh; overflow: hidde
 .speed-box { text-align: right; }
 .speed-value { font-size: 64px; font-weight: bold; color: #00e676; }
 .speed-unit { font-size: 24px; color: #a3b8cc; }
+.route-progress { margin-top: 22px; padding: 16px 20px 15px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(163, 184, 204, 0.18); border-radius: 12px; }
+.route-progress__header, .route-progress__stations, .route-progress__footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.route-progress__header { color: #a3b8cc; font-size: 15px; font-weight: 700; letter-spacing: 0.8px; }
+.route-progress__percent { color: #00e676; font-size: 20px; font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.route-progress__stations { margin-top: 7px; font-size: 16px; font-weight: 700; }
+.route-progress__origin, .route-progress__destination { min-width: 0; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.route-progress__destination { text-align: right; }
+.route-progress__track { position: relative; height: 9px; margin: 17px 14px 14px; background: #33445a; border-radius: 999px; box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.55); }
+.route-progress__track::before, .route-progress__track::after { content: ''; position: absolute; top: 50%; width: 13px; height: 13px; border-radius: 50%; background: #a3b8cc; border: 3px solid #1a222d; transform: translate(-50%, -50%); z-index: 2; }
+.route-progress__track::before { left: 0; }
+.route-progress__track::after { left: 100%; }
+.route-progress__fill { width: 0%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #00b85f, #00e676); box-shadow: 0 0 10px rgba(0, 230, 118, 0.45); transition: width 0.7s ease; }
+.route-progress__marker { position: absolute; top: 50%; left: 0%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 2px solid #ffe26a; border-radius: 50%; background: #ffcc00; color: #101820; font-size: 17px; line-height: 1; box-shadow: 0 0 14px rgba(255, 204, 0, 0.55); transform: translate(-50%, -50%); transition: left 0.7s ease; z-index: 3; }
+.route-progress__footer { color: #a3b8cc; font-size: 14px; }
+.route-progress__status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.route-progress__stage { flex-shrink: 0; color: #ffffff; font-weight: 600; }
 .route-list { background: rgba(0, 0, 0, 0.3); border-left: 2px solid #334; padding: 20px 40px; border-radius: 12px; overflow-y: auto; }
 .route-list::-webkit-scrollbar { width: 12px; }
 .route-list::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); border-radius: 8px; }
@@ -169,6 +191,25 @@ body { background-color: #0d1117; color: #ffffff; height: 100vh; overflow: hidde
 #close-cancelled-modal { align-self: center; width: 200px; background-color: #ff4444; color: white; border: none; }
 #close-cancelled-modal:hover { background-color: #ff2222; }
 
+.settings-modal { z-index: 10500; }
+.settings-modal-content { position: relative; width: min(820px, calc(100vw - 40px)); max-height: min(88vh, 780px); padding: 34px 38px 30px; border-color: #4a5c70; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.65); }
+.settings-modal-heading { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.settings-modal-heading h2 { font-size: 30px; }
+.settings-modal-heading p { color: #a3b8cc; font-size: 16px; }
+.settings-modal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.settings-card { display: flex; flex-direction: column; gap: 15px; padding: 20px; background: #111923; border: 1px solid #33445a; border-radius: 10px; }
+.settings-card h3 { color: #ffcc00; font-size: 19px; }
+.settings-card-wide { grid-column: 1 / -1; }
+.settings-field { display: flex; flex-direction: column; gap: 11px; color: #ffffff; font-weight: 600; }
+.settings-field input[type="range"] { width: 100%; accent-color: #00e676; cursor: pointer; }
+.settings-test-btn { width: 100%; margin-top: auto; padding: 10px 12px; border: 1px solid #00c766; border-radius: 6px; background: #08783f; color: #ffffff; font-size: 15px; font-weight: 700; cursor: pointer; transition: background 0.2s, border-color 0.2s; }
+.settings-test-btn:hover { background: #099950; border-color: #00e676; }
+.refresh-countdown { display: none; margin-top: auto; padding-top: 10px; border-top: 1px solid #33445a; color: #ffcc00; font-size: 14px; text-align: center; }
+.settings-modal-actions { display: flex; justify-content: flex-end; gap: 12px; }
+.settings-modal-actions .settings-action-btn { width: auto; min-width: 150px; margin: 0; }
+.settings-close-btn { flex: initial; width: 160px; padding: 10px 18px; background: #0052a5; border-color: #0077ff; }
+.settings-close-btn:hover { background: #0068cc; }
+
 .whats-new-modal { z-index: 11000; }
 .whats-new-content { position: relative; width: min(720px, calc(100vw - 40px)); max-height: min(86vh, 760px); padding: 34px 38px 30px; border-color: #4a5c70; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.65); }
 .whats-new-heading { display: flex; flex-direction: column; align-items: center; gap: 9px; text-align: center; }
@@ -182,3 +223,12 @@ body { background-color: #0d1117; color: #ffffff; height: 100vh; overflow: hidde
 .whats-new-close-icon:hover { color: #ffffff; }
 .whats-new-confirm { align-self: center; width: 220px; padding: 12px 20px; background: #00c766; border-color: #00e676; color: #07130c; }
 .whats-new-confirm:hover { background: #00e676; }
+
+@media (max-width: 680px) {
+    .settings-modal-content { width: calc(100vw - 24px); padding: 30px 20px 22px; }
+    .settings-modal-grid { grid-template-columns: 1fr; }
+    .settings-card-wide { grid-column: auto; }
+    .settings-modal-actions { flex-direction: column-reverse; }
+    .settings-modal-actions .settings-action-btn,
+    .settings-close-btn { width: 100%; }
+}
