@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
-const APP_BUILD_TAG = 'simrail-sip-by-urso-2.2.0-release-2026-08-27';
+const APP_BUILD_TAG = 'simrail-sip-by-urso-2.2.1-release-2026-08-28';
 console.log(`[SimRail SIP by Urso] Build: ${APP_BUILD_TAG}`);
 
 const APP_LANGUAGE_STORAGE_KEY = 'simrail-sip:interface-language';
@@ -157,10 +157,8 @@ const UI_TRANSLATIONS = Object.freeze({
         'whatsNew.version': 'Wersja {version}',
         'whatsNew.title': 'Co nowego w SimRail SIP by Urso?',
         'whatsNew.subtitle': 'Najważniejsze zmiany i usprawnienia w tej wersji programu.',
-        'whatsNew.regionalVoice': '<strong>Profesjonalny lektor regionalny:</strong> nowy sposób odtwarzania zapowiedzi dla pociągów regionalnych i ŁKA Sprinter, z naturalnymi nagraniami oraz odstępem między kolejnymi częściami komunikatu. Dotychczasowy syntezator nadal pozostaje dostępny.',
-        'whatsNew.interfaceLanguage': '<strong>Polski i angielski interfejs:</strong> język programu można zmienić w ustawieniach bez ponownego uruchamiania. Nazwy stacji pozostają po polsku, a lektor korzysta z polskich lub angielskich zwrotów zgodnie z wybranym językiem.',
-        'whatsNew.settingsWindow': '<strong>Rozbudowane ustawienia:</strong> ustawienia są teraz dostępne również na ekranie głównym i otwierają się w większym, czytelniejszym oknie z osobnymi opcjami zapowiedzi regionalnych i dalekobieżnych.',
-        'whatsNew.routeProgress': '<strong>Postęp trasy:</strong> ekran maszynisty pokazuje przybliżony postęp przejazdu, bieżący odcinek lub stację oraz początek i koniec trasy.',
+        'whatsNew.recordingPacing': '<strong>Naturalniejsze tempo lektora:</strong> przerwa między kolejnymi częściami nagranej zapowiedzi została wydłużona z 0,3 do 0,7 sekundy.',
+        'whatsNew.jackowiceRecording': '<strong>Uzupełniona biblioteka stacji:</strong> dodano brakujące nagranie Jackowic oraz poprawiono nazwę pliku Radziwiłłów Mazowiecki, aby nagrania były prawidłowo dopasowywane do nazw zwracanych przez API.',
         'whatsNew.confirm': 'Rozumiem'
     },
     en: {
@@ -311,10 +309,8 @@ const UI_TRANSLATIONS = Object.freeze({
         'whatsNew.version': 'Version {version}',
         'whatsNew.title': "What's new in SimRail SIP by Urso?",
         'whatsNew.subtitle': 'The most important changes and improvements in this version.',
-        'whatsNew.regionalVoice': '<strong>Professional regional recorded voice:</strong> a new announcement method for regional trains and ŁKA Sprinter uses natural recordings with a short pause between consecutive message parts. The existing synthesizer remains available.',
-        'whatsNew.interfaceLanguage': '<strong>Polish and English interface:</strong> the application language can be changed in Settings without restarting. Station names remain in Polish, while the recorded voice uses Polish or English phrases according to the selected language.',
-        'whatsNew.settingsWindow': '<strong>Expanded Settings:</strong> Settings are now also available on the home screen and open in a larger, clearer window with separate regional and long-distance announcement options.',
-        'whatsNew.routeProgress': '<strong>Route progress:</strong> the driver screen shows the approximate journey progress, current section or station, and the start and end of the route.',
+        'whatsNew.recordingPacing': '<strong>More natural recorded-voice pacing:</strong> the pause between consecutive parts of a recorded announcement has been increased from 0.3 to 0.7 seconds.',
+        'whatsNew.jackowiceRecording': '<strong>Expanded station library:</strong> the missing Jackowice recording was added and the Radziwiłłów Mazowiecki filename was corrected so recordings are matched properly to station names returned by the API.',
         'whatsNew.confirm': 'Got it'
     }
 });
@@ -574,7 +570,7 @@ testAnnouncementBtn?.addEventListener('click', () => {
 });
 
 const CHANGELOG_STORAGE_KEY = 'simrail-sip:last-shown-changelog-version';
-const CHANGELOG_FALLBACK_VERSION = '2.2.0';
+const CHANGELOG_FALLBACK_VERSION = '2.2.1';
 const whatsNewModal = document.getElementById('whats-new-modal');
 const whatsNewVersion = document.getElementById('whats-new-version');
 const closeWhatsNewButton = document.getElementById('close-whats-new');
@@ -1337,7 +1333,7 @@ const REGIONAL_RECORDED_PHRASE_CONFIGS = Object.freeze({
     pl: Object.freeze({ directory: 'Regio zapowiedź PL', prefix: 'r-pl' }),
     en: Object.freeze({ directory: 'Regio zapowiedź EN', prefix: 'r-en' })
 });
-const REGIONAL_RECORDED_AUDIO_GAP_MS = 300;
+const REGIONAL_RECORDED_AUDIO_GAP_MS = 700;
 
 function getRegionalRecordedPhrases() {
     const languageCode = currentInterfaceLanguage === 'en' ? 'en' : 'pl';
