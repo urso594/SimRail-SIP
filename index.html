@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="watermark">SimRail SIP by Urso V2.2.1</div>
+    <div class="watermark">SimRail SIP by Urso V2.2.2</div>
 
     <div id="setup-screen" class="setup-container">
         <button class="settings-btn setup-settings-btn" type="button" title="Ustawienia" aria-label="Otwórz ustawienia" data-i18n-title="settings.open" data-i18n-aria-label="settings.openAria">
@@ -253,13 +253,16 @@
         <div class="modal-content whats-new-content">
             <button id="close-whats-new-icon" class="whats-new-close-icon" type="button" aria-label="Zamknij okno" data-i18n-aria-label="common.closeWindow">&times;</button>
             <div class="whats-new-heading">
-                <span id="whats-new-version" class="whats-new-version">Wersja 2.2.1</span>
+                <span id="whats-new-version" class="whats-new-version">Wersja 2.2.2</span>
                 <h2 id="whats-new-title" data-i18n="whatsNew.title">Co nowego w SimRail SIP by Urso?</h2>
                 <p data-i18n="whatsNew.subtitle">Najważniejsze zmiany i usprawnienia w tej wersji programu.</p>
             </div>
             <ul class="whats-new-list">
-                <li data-i18n-html="whatsNew.recordingPacing"><strong>Naturalniejsze tempo lektora:</strong> przerwa między kolejnymi częściami nagranej zapowiedzi została wydłużona z 0,3 do 0,7 sekundy.</li>
-                <li data-i18n-html="whatsNew.jackowiceRecording"><strong>Uzupełniona biblioteka stacji:</strong> dodano brakujące nagranie Jackowic oraz poprawiono nazwę pliku Radziwiłłów Mazowiecki, aby nagrania były prawidłowo dopasowywane do nazw zwracanych przez API.</li>
+                <li data-i18n-html="whatsNew.fourDigitClassification"><strong>Poprawiona klasyfikacja pociągów:</strong> czterocyfrowe numery 19xx i 91xx są traktowane jako regionalne ŁKA, a pozostałe jako Intercity.</li>
+                <li data-i18n-html="whatsNew.mpeTlk"><strong>Prawidłowa obsługa MPE:</strong> pociągi MPE są zapowiadane jako TLK i nie otrzymują komunikatu o strefie gastronomicznej WARS.</li>
+                <li data-i18n-html="whatsNew.regionalDestination"><strong>Właściwy kierunek pociągów regionalnych:</strong> stacja docelowa zapowiedzi jest pobierana z ostatniego postoju handlowego i pozostaje zgodna z paskiem trasy.</li>
+                <li data-i18n-html="whatsNew.regionalDistance"><strong>Późniejsza zapowiedź następnej stacji:</strong> dla pociągów regionalnych próg oddalenia od poprzedniej stacji zwiększono z 200 do 350 metrów.</li>
+                <li data-i18n-html="whatsNew.krzewieRecording"><strong>Nowe nagranie stacji:</strong> dodano nagranie nazwy stacji Krzewie dla regionalnego trybu lektora.</li>
             </ul>
             <button id="close-whats-new" class="mode-btn whats-new-confirm" type="button" data-i18n="whatsNew.confirm">Rozumiem</button>
         </div>

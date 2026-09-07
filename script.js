@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
-const APP_BUILD_TAG = 'simrail-sip-by-urso-2.2.1-release-2026-08-28';
+const APP_BUILD_TAG = 'simrail-sip-by-urso-2.2.2-release-2026-09-07';
 console.log(`[SimRail SIP by Urso] Build: ${APP_BUILD_TAG}`);
 
 const APP_LANGUAGE_STORAGE_KEY = 'simrail-sip:interface-language';
@@ -157,8 +157,11 @@ const UI_TRANSLATIONS = Object.freeze({
         'whatsNew.version': 'Wersja {version}',
         'whatsNew.title': 'Co nowego w SimRail SIP by Urso?',
         'whatsNew.subtitle': 'Najważniejsze zmiany i usprawnienia w tej wersji programu.',
-        'whatsNew.recordingPacing': '<strong>Naturalniejsze tempo lektora:</strong> przerwa między kolejnymi częściami nagranej zapowiedzi została wydłużona z 0,3 do 0,7 sekundy.',
-        'whatsNew.jackowiceRecording': '<strong>Uzupełniona biblioteka stacji:</strong> dodano brakujące nagranie Jackowic oraz poprawiono nazwę pliku Radziwiłłów Mazowiecki, aby nagrania były prawidłowo dopasowywane do nazw zwracanych przez API.',
+        'whatsNew.fourDigitClassification': '<strong>Poprawiona klasyfikacja pociągów:</strong> czterocyfrowe numery 19xx i 91xx są traktowane jako regionalne ŁKA, a pozostałe jako Intercity.',
+        'whatsNew.mpeTlk': '<strong>Prawidłowa obsługa MPE:</strong> pociągi MPE są zapowiadane jako TLK i nie otrzymują komunikatu o strefie gastronomicznej WARS.',
+        'whatsNew.regionalDestination': '<strong>Właściwy kierunek pociągów regionalnych:</strong> stacja docelowa zapowiedzi jest pobierana z ostatniego postoju handlowego i pozostaje zgodna z paskiem trasy.',
+        'whatsNew.regionalDistance': '<strong>Późniejsza zapowiedź następnej stacji:</strong> dla pociągów regionalnych próg oddalenia od poprzedniej stacji zwiększono z 200 do 350 metrów.',
+        'whatsNew.krzewieRecording': '<strong>Nowe nagranie stacji:</strong> dodano nagranie nazwy stacji Krzewie dla regionalnego trybu lektora.',
         'whatsNew.confirm': 'Rozumiem'
     },
     en: {
@@ -309,8 +312,11 @@ const UI_TRANSLATIONS = Object.freeze({
         'whatsNew.version': 'Version {version}',
         'whatsNew.title': "What's new in SimRail SIP by Urso?",
         'whatsNew.subtitle': 'The most important changes and improvements in this version.',
-        'whatsNew.recordingPacing': '<strong>More natural recorded-voice pacing:</strong> the pause between consecutive parts of a recorded announcement has been increased from 0.3 to 0.7 seconds.',
-        'whatsNew.jackowiceRecording': '<strong>Expanded station library:</strong> the missing Jackowice recording was added and the Radziwiłłów Mazowiecki filename was corrected so recordings are matched properly to station names returned by the API.',
+        'whatsNew.fourDigitClassification': '<strong>Improved train classification:</strong> four-digit numbers beginning with 19 or 91 are treated as regional ŁKA trains, while all other four-digit numbers are treated as Intercity trains.',
+        'whatsNew.mpeTlk': '<strong>Correct MPE handling:</strong> MPE trains are announced as TLK services and no longer receive the WARS dining-area announcement.',
+        'whatsNew.regionalDestination': '<strong>Correct regional train destination:</strong> the announced destination now comes from the final commercial stop and remains consistent with the route progress bar.',
+        'whatsNew.regionalDistance': '<strong>Later next-station announcement:</strong> for regional trains, the distance from the previous station has been increased from 200 to 350 metres.',
+        'whatsNew.krzewieRecording': '<strong>New station recording:</strong> a Krzewie station-name recording has been added for the regional recorded-voice mode.',
         'whatsNew.confirm': 'Got it'
     }
 });
@@ -570,7 +576,7 @@ testAnnouncementBtn?.addEventListener('click', () => {
 });
 
 const CHANGELOG_STORAGE_KEY = 'simrail-sip:last-shown-changelog-version';
-const CHANGELOG_FALLBACK_VERSION = '2.2.1';
+const CHANGELOG_FALLBACK_VERSION = '2.2.2';
 const whatsNewModal = document.getElementById('whats-new-modal');
 const whatsNewVersion = document.getElementById('whats-new-version');
 const closeWhatsNewButton = document.getElementById('close-whats-new');
@@ -1755,6 +1761,8 @@ let activeTrainNumber = '';
 let activeTrainDisplayName = '';
 let activeDestination = ''; 
 let activeTrainType = ''; 
+let activeTrainIsMpe = false;
+let activeTrainHasWars = false;
 let targetStationList = [];
 let onboardLastKnownPosition = null;
 let onboardLastDisplayedProgressRatio = 0;
@@ -2264,6 +2272,33 @@ function containsTrainCategory(value, category) {
     return String(value || '').toUpperCase().includes(String(category || '').toUpperCase());
 }
 
+const FOUR_DIGIT_TRAIN_CLASS = Object.freeze({
+    REGIONAL_LKA: 'REGIONAL_LKA',
+    INTERCITY: 'INTERCITY'
+});
+
+function getFourDigitTrainNumber(...values) {
+    for (const value of values) {
+        const match = String(value || '').match(/(?:^|\D)(\d{4})(?!\d)/);
+        if (match) return match[1];
+    }
+
+    return '';
+}
+
+function classifyFourDigitTrain(...values) {
+    const number = getFourDigitTrainNumber(...values);
+    if (!number) return '';
+
+    return number.startsWith('19') || number.startsWith('91')
+        ? FOUR_DIGIT_TRAIN_CLASS.REGIONAL_LKA
+        : FOUR_DIGIT_TRAIN_CLASS.INTERCITY;
+}
+
+function isMpeTrain(...labels) {
+    return labels.some(label => containsTrainCategory(label, 'MPE'));
+}
+
 // W SimRail oznaczenie EIJ jest współdzielone przez dwa różne rodzaje pociągów.
 // Rozróżniamy je po typie transportu z API:
 // - EIJ + typ dalekobieżny => Pendolino / Express InterCity Premium,
@@ -2279,8 +2314,13 @@ function isEijRegionalLka(type, ...labels) {
 }
 
 function isExpressTrainForUi(type, ...labels) {
+    const fourDigitClass = classifyFourDigitTrain(...labels);
+    if (fourDigitClass) {
+        return fourDigitClass === FOUR_DIGIT_TRAIN_CLASS.INTERCITY;
+    }
+
     const hasEip = labels.some(label => containsTrainCategory(label, 'EIP'));
-    const hasMpe = labels.some(label => containsTrainCategory(label, 'MPE'));
+    const hasMpe = isMpeTrain(...labels);
     const hasLs = labels.some(label => containsTrainCategory(label, 'ŁS'));
     const hasLka = labels.some(label => containsTrainCategory(label, 'ŁKA'));
 
@@ -2426,8 +2466,18 @@ async function refreshStationSpecificRealtime(t) {
 function getStationTrainSpeechInfo(t) {
     let trainType = 'pociąg regionalny';
     let reservationSuffix = '';
+    const rawNumber = t.trainName.split(' ')[1] || t.trainName;
+    const fourDigitClass = classifyFourDigitTrain(rawNumber, t.trainName);
 
-    if (isEijPendolino(t.trainTypeRaw, t.trainCategory, t.trainName)) {
+    if (fourDigitClass === FOUR_DIGIT_TRAIN_CLASS.REGIONAL_LKA) {
+        trainType = 'pociąg regionalny pośpieszny ŁKA';
+    } else if (fourDigitClass === FOUR_DIGIT_TRAIN_CLASS.INTERCITY && isMpeTrain(t.trainCategory, t.trainName)) {
+        trainType = 'pociąg dalekobieżny TLK';
+        reservationSuffix = ' Pociąg jest objęty obowiązkową rezerwacją miejsc.';
+    } else if (fourDigitClass === FOUR_DIGIT_TRAIN_CLASS.INTERCITY) {
+        trainType = 'pociąg pospieszny Intercity';
+        reservationSuffix = ' Pociąg jest objęty obowiązkową rezerwacją miejsc.';
+    } else if (isEijPendolino(t.trainTypeRaw, t.trainCategory, t.trainName)) {
         trainType = 'pociąg Express Intercity Premium';
         reservationSuffix = ' Pociąg jest objęty obowiązkową rezerwacją miejsc.';
     } else if (isEijRegionalLka(t.trainTypeRaw, t.trainCategory, t.trainName)) {
@@ -2437,7 +2487,7 @@ function getStationTrainSpeechInfo(t) {
         reservationSuffix = ' Pociąg jest objęty obowiązkową rezerwacją miejsc.';
     } else if (t.trainCategory.includes('Łs') || t.trainName.includes('Łs')) {
         trainType = 'pociąg pośpieszny';
-    } else if (t.trainCategory.includes('MPE')) {
+    } else if (isMpeTrain(t.trainCategory, t.trainName)) {
         trainType = 'pociąg dalekobieżny TLK';
         reservationSuffix = ' Pociąg jest objęty obowiązkową rezerwacją miejsc.';
     } else if (LONG_DISTANCE_EXPRESS_TYPES.has(t.trainTypeRaw)) {
@@ -2445,7 +2495,6 @@ function getStationTrainSpeechInfo(t) {
         reservationSuffix = ' Pociąg jest objęty obowiązkową rezerwacją miejsc.';
     }
 
-    const rawNumber = t.trainName.split(' ')[1] || t.trainName;
     const number = formatTrainNumberForTTS(rawNumber);
     const viaText = t.viaText ? `, przez stacje: ${t.viaText}` : '';
 
@@ -3287,11 +3336,15 @@ function renderStationBoard() {
         const tr = document.createElement('tr');
 
         let typeStr = uiText('station.typeRegional');
-        if (isEijPendolino(t.trainTypeRaw, t.trainCategory, t.trainName)) typeStr = uiText('station.typeExpressPremium');
+        const fourDigitClass = classifyFourDigitTrain(t.trainName);
+        if (fourDigitClass === FOUR_DIGIT_TRAIN_CLASS.REGIONAL_LKA) typeStr = uiText('station.typeLkaExpress');
+        else if (fourDigitClass === FOUR_DIGIT_TRAIN_CLASS.INTERCITY && isMpeTrain(t.trainCategory, t.trainName)) typeStr = uiText('station.typeTlk');
+        else if (fourDigitClass === FOUR_DIGIT_TRAIN_CLASS.INTERCITY) typeStr = uiText('station.typeLongDistance');
+        else if (isEijPendolino(t.trainTypeRaw, t.trainCategory, t.trainName)) typeStr = uiText('station.typeExpressPremium');
         else if (isEijRegionalLka(t.trainTypeRaw, t.trainCategory, t.trainName)) typeStr = uiText('station.typeLkaExpress');
         else if (t.trainCategory.includes('EIP') || t.trainName.includes('EIP')) typeStr = uiText('station.typeLongDistance');
         else if (t.trainCategory.includes('Łs') || t.trainName.includes('Łs')) typeStr = uiText('station.typeFastPassenger');
-        else if (t.trainCategory.includes('MPE')) typeStr = uiText('station.typeTlk');
+        else if (isMpeTrain(t.trainCategory, t.trainName)) typeStr = uiText('station.typeTlk');
         else if (LONG_DISTANCE_EXPRESS_TYPES.has(t.trainTypeRaw)) typeStr = uiText('station.typeLongDistance');
         else if (t.trainCategory.includes('ŁKA')) typeStr = uiText('station.typeSprinter');
 
@@ -3703,7 +3756,7 @@ function renderTrainOptions(filterText = '') {
         if (!searchableLabel.includes(lowerFilter)) return false;
         const info = t.trainInfo.toUpperCase();
         
-        const isExpress = isExpressTrainForUi(t.type, info);
+        const isExpress = isExpressTrainForUi(t.type, info, t.rawNumber);
 
         if (typeFilter === 'EXPRESS' && !isExpress) return false;
         if (typeFilter === 'REGIONAL' && isExpress) return false;
@@ -3958,7 +4011,7 @@ function renderRouteUIOnboard(routeArray) {
 }
 
 const ONBOARD_NEXT_STATION_DISTANCE_LONG_DISTANCE_METERS = 500;
-const ONBOARD_NEXT_STATION_DISTANCE_REGIONAL_METERS = 200;
+const ONBOARD_NEXT_STATION_DISTANCE_REGIONAL_METERS = 350;
 
 function getOnboardNextStationAnnouncementDistanceMeters() {
     return activeTrainType === 'REGIONAL_TRAIN'
@@ -4076,11 +4129,13 @@ async function startOnboardMode() {
     activeDestination = selectedOption.dataset.destination;
     
     const trainInfoText = selectedOption.dataset.trainInfo.toUpperCase();
-    if (isExpressTrainForUi(selectedOption.dataset.type, trainInfoText)) {
+    activeTrainIsMpe = isMpeTrain(trainInfoText);
+    if (isExpressTrainForUi(selectedOption.dataset.type, trainInfoText, activeTrainNumber)) {
         activeTrainType = "NATIONAL_EXPRESS_TRAIN";
     } else {
         activeTrainType = "REGIONAL_TRAIN";
     }
+    activeTrainHasWars = activeTrainType !== "REGIONAL_TRAIN" && !activeTrainIsMpe;
 
     setupScreen.style.display = 'none';
     sipScreen.style.display = 'flex';
@@ -4268,6 +4323,20 @@ async function loadJourneyRouteOnboard(journeyId, trainLat, trainLon, selectedTr
                 state: 'inactive'
             }));
 
+            // Dla pociągów regionalnych destinationEvent może wskazywać jedynie koniec
+            // bieżącego odcinka przejazdu. Ostatni postój handlowy na pełnej trasie jest
+            // właściwą stacją docelową zarówno dla zapowiedzi, jak i nagłówka ekranu.
+            if (activeTrainType === 'REGIONAL_TRAIN' && targetStationList.length > 0) {
+                const routeDestination = targetStationList[targetStationList.length - 1].station;
+                if (routeDestination) {
+                    activeDestination = routeDestination;
+                    document.querySelector('.train-info').textContent = uiText('onboard.direction', {
+                        train: activeTrainDisplayName,
+                        destination: activeDestination
+                    });
+                }
+            }
+
             if (targetStationList.length > 0) {
                 let activeIdx = 0;
                 if (trainLat !== 0 && trainLon !== 0) {
@@ -4317,7 +4386,7 @@ function startOnboardLiveTracking() {
     if (trackingInterval) clearInterval(trackingInterval);
     const modeTrackingGeneration = ++trackingGeneration;
     const currentIsIntercity = ["NATIONAL_EXPRESS_TRAIN", "INTER_NATIONAL_EXPRESS_TRAIN", "INTER_REGIONAL_EXPRESS_TRAIN"].includes(activeTrainType);
-    const currentHasWars = ["NATIONAL_EXPRESS_TRAIN", "INTER_NATIONAL_EXPRESS_TRAIN"].includes(activeTrainType);
+    const currentHasWars = activeTrainHasWars;
     const assignedVoice = currentIsIntercity ? 'pl-PL-ZofiaNeural' : 'pl-PL-MarekNeural';
     let missingTrainCount = 0;
     let trackingLoopCounter = 0;
@@ -4399,7 +4468,8 @@ function startOnboardLiveTracking() {
                 if (distFromPrev >= nextStationAnnouncementDistance && !targetStation.departureAnnounced && !targetStation.arrivalPlayed) {
                     targetStation.departureAnnounced = true;
                     if (currentIsIntercity) {
-                        speakText(`Witamy Państwa na pokładzie pociągu intercity do stacji ${activeDestination}. Następna stacja ${targetStation.station}.`, assignedVoice);
+                        const trainKind = activeTrainIsMpe ? 'pociągu TLK' : 'pociągu intercity';
+                        speakText(`Witamy Państwa na pokładzie ${trainKind} do stacji ${activeDestination}. Następna stacja ${targetStation.station}.`, assignedVoice);
                     } else {
                         announceRegionalNextStation(targetStation.station, activeDestination, assignedVoice);
                     }
