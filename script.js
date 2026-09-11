@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
-const APP_BUILD_TAG = 'simrail-sip-by-urso-2.2.2-release-2026-09-07';
+const APP_BUILD_TAG = 'simrail-sip-by-urso-2.2.3-release-2026-09-11';
 console.log(`[SimRail SIP by Urso] Build: ${APP_BUILD_TAG}`);
 
 const APP_LANGUAGE_STORAGE_KEY = 'simrail-sip:interface-language';
@@ -28,8 +28,10 @@ const UI_TRANSLATIONS = Object.freeze({
         'settings.testAnnouncement': 'Testuj zapowiedź',
         'settings.stationMessages': 'Komunikaty stacyjne',
         'settings.randomMessages': 'Losowe komunikaty co 5 minut',
+        'settings.stationReverb': 'Pogłos zapowiedzi stacyjnych',
         'settings.refreshCountdownInitial': 'Odświeżanie tablicy za: 15s',
         'settings.onboardAnnouncements': 'Zapowiedzi pokładowe',
+        'settings.onboardRadioEffect': 'Efekt krótkofalówki w zapowiedziach pokładowych',
         'settings.regionalAnnouncements': 'Zapowiedzi regionalne',
         'settings.regionalAnnouncementsAria': 'Sposób odtwarzania zapowiedzi regionalnych',
         'settings.longDistanceAnnouncements': 'Zapowiedzi dalekobieżne',
@@ -157,11 +159,8 @@ const UI_TRANSLATIONS = Object.freeze({
         'whatsNew.version': 'Wersja {version}',
         'whatsNew.title': 'Co nowego w SimRail SIP by Urso?',
         'whatsNew.subtitle': 'Najważniejsze zmiany i usprawnienia w tej wersji programu.',
-        'whatsNew.fourDigitClassification': '<strong>Poprawiona klasyfikacja pociągów:</strong> czterocyfrowe numery 19xx i 91xx są traktowane jako regionalne ŁKA, a pozostałe jako Intercity.',
-        'whatsNew.mpeTlk': '<strong>Prawidłowa obsługa MPE:</strong> pociągi MPE są zapowiadane jako TLK i nie otrzymują komunikatu o strefie gastronomicznej WARS.',
-        'whatsNew.regionalDestination': '<strong>Właściwy kierunek pociągów regionalnych:</strong> stacja docelowa zapowiedzi jest pobierana z ostatniego postoju handlowego i pozostaje zgodna z paskiem trasy.',
-        'whatsNew.regionalDistance': '<strong>Późniejsza zapowiedź następnej stacji:</strong> dla pociągów regionalnych próg oddalenia od poprzedniej stacji zwiększono z 200 do 350 metrów.',
-        'whatsNew.krzewieRecording': '<strong>Nowe nagranie stacji:</strong> dodano nagranie nazwy stacji Krzewie dla regionalnego trybu lektora.',
+        'whatsNew.stationReverb': '<strong>Realistyczniejsze zapowiedzi stacyjne:</strong> głos syntezatora w trybie dyżurnego może teraz korzystać z pogłosu imitującego nagłośnienie prawdziwej stacji.',
+        'whatsNew.onboardRadioEffect': '<strong>Radiowe brzmienie w kabinie:</strong> zapowiedzi pokładowe syntezatora i lektora mogą być odtwarzane z efektem krótkofalówki. Oba efekty można niezależnie wyłączyć w ustawieniach.',
         'whatsNew.confirm': 'Rozumiem'
     },
     en: {
@@ -183,8 +182,10 @@ const UI_TRANSLATIONS = Object.freeze({
         'settings.testAnnouncement': 'Test announcement',
         'settings.stationMessages': 'Station messages',
         'settings.randomMessages': 'Random messages every 5 minutes',
+        'settings.stationReverb': 'Station announcement reverb',
         'settings.refreshCountdownInitial': 'Board refresh in: 15s',
         'settings.onboardAnnouncements': 'Onboard announcements',
+        'settings.onboardRadioEffect': 'Radio effect for onboard announcements',
         'settings.regionalAnnouncements': 'Regional train announcements',
         'settings.regionalAnnouncementsAria': 'Regional train announcement playback method',
         'settings.longDistanceAnnouncements': 'Long-distance train announcements',
@@ -312,11 +313,8 @@ const UI_TRANSLATIONS = Object.freeze({
         'whatsNew.version': 'Version {version}',
         'whatsNew.title': "What's new in SimRail SIP by Urso?",
         'whatsNew.subtitle': 'The most important changes and improvements in this version.',
-        'whatsNew.fourDigitClassification': '<strong>Improved train classification:</strong> four-digit numbers beginning with 19 or 91 are treated as regional ŁKA trains, while all other four-digit numbers are treated as Intercity trains.',
-        'whatsNew.mpeTlk': '<strong>Correct MPE handling:</strong> MPE trains are announced as TLK services and no longer receive the WARS dining-area announcement.',
-        'whatsNew.regionalDestination': '<strong>Correct regional train destination:</strong> the announced destination now comes from the final commercial stop and remains consistent with the route progress bar.',
-        'whatsNew.regionalDistance': '<strong>Later next-station announcement:</strong> for regional trains, the distance from the previous station has been increased from 200 to 350 metres.',
-        'whatsNew.krzewieRecording': '<strong>New station recording:</strong> a Krzewie station-name recording has been added for the regional recorded-voice mode.',
+        'whatsNew.stationReverb': '<strong>More realistic station announcements:</strong> synthesized dispatcher-mode speech can now use reverb that imitates a real station public-address system.',
+        'whatsNew.onboardRadioEffect': '<strong>Radio sound in the cab:</strong> synthesized and recorded onboard announcements can now use a two-way-radio effect. Both effects can be disabled independently in settings.',
         'whatsNew.confirm': 'Got it'
     }
 });
@@ -444,10 +442,14 @@ const testAnnouncementBtn = document.getElementById('test-announcement-btn');
 const appLanguageSelect = document.getElementById('app-language-select');
 const volumeSlidersArray = document.querySelectorAll('.volume-slider');
 const randomStationAnnouncementsToggles = document.querySelectorAll('.random-station-announcements-toggle');
+const stationReverbToggles = document.querySelectorAll('.station-reverb-toggle');
+const onboardRadioEffectToggles = document.querySelectorAll('.onboard-radio-effect-toggle');
 const regionalAnnouncementModeSelects = document.querySelectorAll('.regional-announcement-mode-select');
 const longDistanceAnnouncementModeSelects = document.querySelectorAll('.long-distance-announcement-mode-select');
 
 const RANDOM_STATION_ANNOUNCEMENTS_STORAGE_KEY = 'simrail-sip:random-station-announcements-enabled';
+const STATION_REVERB_STORAGE_KEY = 'simrail-sip:station-reverb-enabled';
+const ONBOARD_RADIO_EFFECT_STORAGE_KEY = 'simrail-sip:onboard-radio-effect-enabled';
 const REGIONAL_ANNOUNCEMENT_MODE_STORAGE_KEY = 'simrail-sip:regional-announcement-mode';
 const ANNOUNCEMENT_MODE_SYNTHESIZER = 'synthesizer';
 const ANNOUNCEMENT_MODE_RECORDED = 'recorded';
@@ -460,6 +462,8 @@ const RANDOM_STATION_ANNOUNCEMENTS = [
 
 let randomStationAnnouncementsEnabled = true;
 let randomStationAnnouncementTimer = null;
+let stationReverbEnabled = true;
+let onboardRadioEffectEnabled = true;
 
 try {
     randomStationAnnouncementsEnabled = localStorage.getItem(RANDOM_STATION_ANNOUNCEMENTS_STORAGE_KEY) !== 'false';
@@ -488,6 +492,50 @@ randomStationAnnouncementsToggles.forEach(toggle => {
             scheduleRandomStationAnnouncement();
         } else {
             stopRandomStationAnnouncements();
+        }
+    });
+});
+
+try {
+    stationReverbEnabled = localStorage.getItem(STATION_REVERB_STORAGE_KEY) !== 'false';
+} catch (err) {
+    console.warn('[POGŁOS STACYJNY] Nie udało się odczytać ustawienia:', err);
+}
+
+stationReverbToggles.forEach(toggle => {
+    toggle.checked = stationReverbEnabled;
+    toggle.addEventListener('change', () => {
+        stationReverbEnabled = toggle.checked;
+        stationReverbToggles.forEach(otherToggle => {
+            otherToggle.checked = stationReverbEnabled;
+        });
+
+        try {
+            localStorage.setItem(STATION_REVERB_STORAGE_KEY, String(stationReverbEnabled));
+        } catch (err) {
+            console.warn('[POGŁOS STACYJNY] Nie udało się zapisać ustawienia:', err);
+        }
+    });
+});
+
+try {
+    onboardRadioEffectEnabled = localStorage.getItem(ONBOARD_RADIO_EFFECT_STORAGE_KEY) !== 'false';
+} catch (err) {
+    console.warn('[EFEKT KRÓTKOFALÓWKI] Nie udało się odczytać ustawienia:', err);
+}
+
+onboardRadioEffectToggles.forEach(toggle => {
+    toggle.checked = onboardRadioEffectEnabled;
+    toggle.addEventListener('change', () => {
+        onboardRadioEffectEnabled = toggle.checked;
+        onboardRadioEffectToggles.forEach(otherToggle => {
+            otherToggle.checked = onboardRadioEffectEnabled;
+        });
+
+        try {
+            localStorage.setItem(ONBOARD_RADIO_EFFECT_STORAGE_KEY, String(onboardRadioEffectEnabled));
+        } catch (err) {
+            console.warn('[EFEKT KRÓTKOFALÓWKI] Nie udało się zapisać ustawienia:', err);
         }
     });
 });
@@ -576,7 +624,7 @@ testAnnouncementBtn?.addEventListener('click', () => {
 });
 
 const CHANGELOG_STORAGE_KEY = 'simrail-sip:last-shown-changelog-version';
-const CHANGELOG_FALLBACK_VERSION = '2.2.2';
+const CHANGELOG_FALLBACK_VERSION = '2.2.3';
 const whatsNewModal = document.getElementById('whats-new-modal');
 const whatsNewVersion = document.getElementById('whats-new-version');
 const closeWhatsNewButton = document.getElementById('close-whats-new');
@@ -1430,11 +1478,176 @@ function playGongAudio() {
     });
 }
 
-function playAudioUrl(audioUrl, { label = 'audio', tickerText = '', revokeUrl = false } = {}) {
+function createStationReverbController(audio) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+        console.warn('[POGŁOS STACYJNY] Web Audio API jest niedostępne. Odtwarzam czysty głos.');
+        return null;
+    }
+
+    const context = new AudioContextClass();
+    let source = null;
+
+    try {
+        const highPass = context.createBiquadFilter();
+        highPass.type = 'highpass';
+        highPass.frequency.value = 150;
+        highPass.Q.value = 0.55;
+
+        const lowPass = context.createBiquadFilter();
+        lowPass.type = 'lowpass';
+        lowPass.frequency.value = 6200;
+        lowPass.Q.value = 0.4;
+
+        const dryGain = context.createGain();
+        dryGain.gain.value = 0.82;
+
+        const preDelay = context.createDelay(0.25);
+        preDelay.delayTime.value = 0.055;
+
+        const convolver = context.createConvolver();
+        const impulseLength = Math.floor(context.sampleRate * 2.1);
+        const impulse = context.createBuffer(2, impulseLength, context.sampleRate);
+
+        for (let channel = 0; channel < impulse.numberOfChannels; channel++) {
+            const data = impulse.getChannelData(channel);
+            for (let sample = 0; sample < impulseLength; sample++) {
+                const progress = sample / impulseLength;
+                const decay = Math.pow(1 - progress, 2.8);
+                data[sample] = (Math.random() * 2 - 1) * decay;
+            }
+        }
+
+        convolver.buffer = impulse;
+
+        const wetGain = context.createGain();
+        wetGain.gain.value = 0.28;
+
+        const outputGain = context.createGain();
+        outputGain.gain.value = 0.88;
+
+        highPass.connect(lowPass);
+        lowPass.connect(dryGain);
+        dryGain.connect(outputGain);
+        lowPass.connect(preDelay);
+        preDelay.connect(convolver);
+        convolver.connect(wetGain);
+        wetGain.connect(outputGain);
+        outputGain.connect(context.destination);
+
+        source = context.createMediaElementSource(audio);
+        source.connect(highPass);
+
+        return {
+            tailMs: 650,
+            resume: () => context.state === 'suspended' ? context.resume() : Promise.resolve(),
+            close: () => {
+                try { source.disconnect(); } catch (err) {}
+                if (context.state !== 'closed') context.close().catch(() => {});
+            }
+        };
+    } catch (err) {
+        console.warn('[POGŁOS STACYJNY] Nie udało się uruchomić efektu. Odtwarzam czysty głos:', err);
+        try {
+            if (source) source.connect(context.destination);
+            else if (context.state !== 'closed') context.close().catch(() => {});
+        } catch (fallbackError) {}
+        return null;
+    }
+}
+
+function createOnboardRadioController(audio) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+        console.warn('[EFEKT KRÓTKOFALÓWKI] Web Audio API jest niedostępne. Odtwarzam czysty głos.');
+        return null;
+    }
+
+    const context = new AudioContextClass();
+    let source = null;
+
+    try {
+        const highPass = context.createBiquadFilter();
+        highPass.type = 'highpass';
+        highPass.frequency.value = 320;
+        highPass.Q.value = 0.8;
+
+        const lowPass = context.createBiquadFilter();
+        lowPass.type = 'lowpass';
+        lowPass.frequency.value = 3500;
+        lowPass.Q.value = 0.7;
+
+        const voicePresence = context.createBiquadFilter();
+        voicePresence.type = 'peaking';
+        voicePresence.frequency.value = 1750;
+        voicePresence.Q.value = 0.9;
+        voicePresence.gain.value = 4;
+
+        const compressor = context.createDynamicsCompressor();
+        compressor.threshold.value = -30;
+        compressor.knee.value = 8;
+        compressor.ratio.value = 6;
+        compressor.attack.value = 0.004;
+        compressor.release.value = 0.16;
+
+        const distortion = context.createWaveShaper();
+        const curve = new Float32Array(4096);
+        const drive = 2.2;
+        const normalization = Math.tanh(drive);
+        for (let sample = 0; sample < curve.length; sample++) {
+            const input = sample * 2 / (curve.length - 1) - 1;
+            curve[sample] = Math.tanh(input * drive) / normalization;
+        }
+        distortion.curve = curve;
+        distortion.oversample = '2x';
+
+        const outputGain = context.createGain();
+        outputGain.gain.value = 0.82;
+
+        highPass.connect(lowPass);
+        lowPass.connect(voicePresence);
+        voicePresence.connect(compressor);
+        compressor.connect(distortion);
+        distortion.connect(outputGain);
+        outputGain.connect(context.destination);
+
+        source = context.createMediaElementSource(audio);
+        source.connect(highPass);
+
+        return {
+            tailMs: 0,
+            resume: () => context.state === 'suspended' ? context.resume() : Promise.resolve(),
+            close: () => {
+                try { source.disconnect(); } catch (err) {}
+                if (context.state !== 'closed') context.close().catch(() => {});
+            }
+        };
+    } catch (err) {
+        console.warn('[EFEKT KRÓTKOFALÓWKI] Nie udało się uruchomić efektu. Odtwarzam czysty głos:', err);
+        try {
+            if (source) source.connect(context.destination);
+            else if (context.state !== 'closed') context.close().catch(() => {});
+        } catch (fallbackError) {}
+        return null;
+    }
+}
+
+function playAudioUrl(audioUrl, {
+    label = 'audio',
+    tickerText = '',
+    revokeUrl = false,
+    stationReverb = false,
+    onboardRadio = false
+} = {}) {
     return new Promise((resolve, reject) => {
         const audio = new Audio(audioUrl);
         audio.volume = currentTtsVolume;
         activeAudioElements.push(audio);
+        const audioEffectController = stationReverb
+            ? createStationReverbController(audio)
+            : onboardRadio
+                ? createOnboardRadioController(audio)
+                : null;
 
         let finished = false;
         let tickerToken = null;
@@ -1446,6 +1659,7 @@ function playAudioUrl(audioUrl, { label = 'audio', tickerText = '', revokeUrl = 
             activeAudioElements = activeAudioElements.filter(item => item !== audio);
             clearTimeout(timeout);
             hideStationAnnouncementTicker(tickerToken);
+            audioEffectController?.close();
 
             try {
                 audio.pause();
@@ -1462,7 +1676,10 @@ function playAudioUrl(audioUrl, { label = 'audio', tickerText = '', revokeUrl = 
             cleanup(new Error(`Timeout awaryjny odtwarzania: ${label}`));
         }, 60000);
 
-        audio.onended = () => cleanup();
+        audio.onended = () => {
+            if (audioEffectController?.tailMs) setTimeout(() => cleanup(), audioEffectController.tailMs);
+            else cleanup();
+        };
         audio.onerror = () => cleanup(new Error(`Nie udało się odtworzyć: ${label}`));
 
         if (tickerText) {
@@ -1471,11 +1688,16 @@ function playAudioUrl(audioUrl, { label = 'audio', tickerText = '', revokeUrl = 
             }, { once: true });
         }
 
-        audio.play().catch(err => cleanup(err));
+        const startPlayback = async () => {
+            if (audioEffectController) await audioEffectController.resume();
+            await audio.play();
+        };
+
+        startPlayback().catch(err => cleanup(err));
     });
 }
 
-async function playGeneratedTts(text, voice) {
+async function playGeneratedTts(text, voice, { stationReverb = false, onboardRadio = false } = {}) {
     // TTS jest generowany w procesie głównym Electron. main.js zwraca MP3
     // jako Base64, dzięki czemu nie przekazujemy ścieżki do pliku tymczasowego.
     const response = await ipcRenderer.invoke('generate-tts', { text, voice });
@@ -1496,15 +1718,18 @@ async function playGeneratedTts(text, voice) {
     await playAudioUrl(audioUrl, {
         label: 'TTS',
         tickerText: text,
-        revokeUrl: true
+        revokeUrl: true,
+        stationReverb: stationReverb && stationReverbEnabled,
+        onboardRadio: onboardRadio && onboardRadioEffectEnabled
     });
 }
 
-async function playRecordedAudioFiles(audioFiles) {
+async function playRecordedAudioFiles(audioFiles, { onboardRadio = false } = {}) {
     for (let index = 0; index < audioFiles.length; index++) {
         const audioFile = audioFiles[index];
         await playAudioUrl(pathToFileURL(audioFile).href, {
-            label: path.basename(audioFile)
+            label: path.basename(audioFile),
+            onboardRadio: onboardRadio && onboardRadioEffectEnabled
         });
 
         if (index < audioFiles.length - 1) {
@@ -1525,13 +1750,20 @@ async function processAudioQueue() {
 
         if (queueItem.kind === ANNOUNCEMENT_MODE_RECORDED) {
             try {
-                await playRecordedAudioFiles(queueItem.audioFiles);
+                await playRecordedAudioFiles(queueItem.audioFiles, {
+                    onboardRadio: Boolean(queueItem.onboardRadio)
+                });
             } catch (recordedAudioError) {
                 console.error('[LEKTOR REGIONALNY] Błąd nagrania. Używam syntezatora:', recordedAudioError);
-                await playGeneratedTts(queueItem.fallbackText, queueItem.fallbackVoice);
+                await playGeneratedTts(queueItem.fallbackText, queueItem.fallbackVoice, {
+                    onboardRadio: Boolean(queueItem.onboardRadio)
+                });
             }
         } else {
-            await playGeneratedTts(text, voice);
+            await playGeneratedTts(text, voice, {
+                stationReverb: Boolean(queueItem.stationReverb),
+                onboardRadio: Boolean(queueItem.onboardRadio)
+            });
         }
     } catch (err) {
         console.error('=== BŁĄD SYSTEMU AUDIO ===');
@@ -1553,12 +1785,12 @@ async function processAudioQueue() {
 }
 
 function speakText(text, voice) {
-    audioQueue.push({ text, voice, withGong: false });
+    audioQueue.push({ text, voice, withGong: false, onboardRadio: true });
     processAudioQueue();
 }
 
 function playGongAndSpeak(text, voice) {
-    audioQueue.push({ text, voice, withGong: true });
+    audioQueue.push({ text, voice, withGong: true, stationReverb: true });
     processAudioQueue();
 }
 
@@ -1581,7 +1813,8 @@ function queueRegionalRecordedAnnouncement(audioFiles, fallbackText, fallbackVoi
         fallbackVoice,
         text: fallbackText,
         voice: fallbackVoice,
-        withGong: false
+        withGong: false,
+        onboardRadio: true
     });
     processAudioQueue();
     return true;

@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="watermark">SimRail SIP by Urso V2.2.2</div>
+    <div class="watermark">SimRail SIP by Urso V2.2.3</div>
 
     <div id="setup-screen" class="setup-container">
         <button class="settings-btn setup-settings-btn" type="button" title="Ustawienia" aria-label="Otwórz ustawienia" data-i18n-title="settings.open" data-i18n-aria-label="settings.openAria">
@@ -216,12 +216,20 @@
                         <input class="random-station-announcements-toggle" type="checkbox" checked>
                         <span data-i18n="settings.randomMessages">Losowe komunikaty co 5 minut</span>
                     </label>
+                    <label class="settings-toggle-row">
+                        <input class="station-reverb-toggle" type="checkbox" checked>
+                        <span data-i18n="settings.stationReverb">Pogłos zapowiedzi stacyjnych</span>
+                    </label>
                     <div id="settings-refresh-countdown" class="refresh-countdown" data-i18n="settings.refreshCountdownInitial">Odświeżanie tablicy za: 15s</div>
                 </section>
 
                 <section class="settings-card settings-card-wide">
                     <h3 data-i18n="settings.onboardAnnouncements">Zapowiedzi pokładowe</h3>
                     <div class="announcement-settings-section">
+                        <label class="settings-toggle-row">
+                            <input class="onboard-radio-effect-toggle" type="checkbox" checked>
+                            <span data-i18n="settings.onboardRadioEffect">Efekt krótkofalówki w zapowiedziach pokładowych</span>
+                        </label>
                         <label class="announcement-mode-setting">
                             <span data-i18n="settings.regionalAnnouncements">Zapowiedzi regionalne</span>
                             <select class="regional-announcement-mode-select" aria-label="Sposób odtwarzania zapowiedzi regionalnych" data-i18n-aria-label="settings.regionalAnnouncementsAria">
@@ -253,16 +261,13 @@
         <div class="modal-content whats-new-content">
             <button id="close-whats-new-icon" class="whats-new-close-icon" type="button" aria-label="Zamknij okno" data-i18n-aria-label="common.closeWindow">&times;</button>
             <div class="whats-new-heading">
-                <span id="whats-new-version" class="whats-new-version">Wersja 2.2.2</span>
+                <span id="whats-new-version" class="whats-new-version">Wersja 2.2.3</span>
                 <h2 id="whats-new-title" data-i18n="whatsNew.title">Co nowego w SimRail SIP by Urso?</h2>
                 <p data-i18n="whatsNew.subtitle">Najważniejsze zmiany i usprawnienia w tej wersji programu.</p>
             </div>
             <ul class="whats-new-list">
-                <li data-i18n-html="whatsNew.fourDigitClassification"><strong>Poprawiona klasyfikacja pociągów:</strong> czterocyfrowe numery 19xx i 91xx są traktowane jako regionalne ŁKA, a pozostałe jako Intercity.</li>
-                <li data-i18n-html="whatsNew.mpeTlk"><strong>Prawidłowa obsługa MPE:</strong> pociągi MPE są zapowiadane jako TLK i nie otrzymują komunikatu o strefie gastronomicznej WARS.</li>
-                <li data-i18n-html="whatsNew.regionalDestination"><strong>Właściwy kierunek pociągów regionalnych:</strong> stacja docelowa zapowiedzi jest pobierana z ostatniego postoju handlowego i pozostaje zgodna z paskiem trasy.</li>
-                <li data-i18n-html="whatsNew.regionalDistance"><strong>Późniejsza zapowiedź następnej stacji:</strong> dla pociągów regionalnych próg oddalenia od poprzedniej stacji zwiększono z 200 do 350 metrów.</li>
-                <li data-i18n-html="whatsNew.krzewieRecording"><strong>Nowe nagranie stacji:</strong> dodano nagranie nazwy stacji Krzewie dla regionalnego trybu lektora.</li>
+                <li data-i18n-html="whatsNew.stationReverb"><strong>Realistyczniejsze zapowiedzi stacyjne:</strong> głos syntezatora w trybie dyżurnego może teraz korzystać z pogłosu imitującego nagłośnienie prawdziwej stacji.</li>
+                <li data-i18n-html="whatsNew.onboardRadioEffect"><strong>Radiowe brzmienie w kabinie:</strong> zapowiedzi pokładowe syntezatora i lektora mogą być odtwarzane z efektem krótkofalówki. Oba efekty można niezależnie wyłączyć w ustawieniach.</li>
             </ul>
             <button id="close-whats-new" class="mode-btn whats-new-confirm" type="button" data-i18n="whatsNew.confirm">Rozumiem</button>
         </div>
