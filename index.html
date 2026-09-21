@@ -7,9 +7,12 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="watermark">SimRail SIP by Urso V2.2.3</div>
+    <div class="watermark">SimRail SIP by Urso V2.3.0</div>
 
     <div id="setup-screen" class="setup-container">
+        <button class="support-project-btn setup-support-btn" type="button" aria-label="Wesprzyj projekt" data-i18n-aria-label="support.project">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h12v2h1.5a3.5 3.5 0 0 1 0 7H17.2A6 6 0 0 1 12 19H10a6 6 0 0 1-6-6V7h1Zm1 2v4a4 4 0 0 0 4 4h2a4 4 0 0 0 4-4V9H6Zm12 2v2c0 .34-.03.67-.08 1h.58a1.5 1.5 0 0 0 0-3H18ZM4 21h15v2H4v-2ZM8 1h2v4H8V1Zm4 0h2v4h-2V1Z"/></svg>
+        </button>
         <button class="settings-btn setup-settings-btn" type="button" title="Ustawienia" aria-label="Otwórz ustawienia" data-i18n-title="settings.open" data-i18n-aria-label="settings.openAria">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.21-.07.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
         </button>
@@ -73,6 +76,13 @@
                 <div class="train-info" data-i18n="common.loadingData">Wczytywanie...</div>
             </div>
             <div class="sip-header-right">
+                <button class="support-project-btn" type="button" aria-label="Wesprzyj projekt" data-i18n-aria-label="support.project">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h12v2h1.5a3.5 3.5 0 0 1 0 7H17.2A6 6 0 0 1 12 19H10a6 6 0 0 1-6-6V7h1Zm1 2v4a4 4 0 0 0 4 4h2a4 4 0 0 0 4-4V9H6Zm12 2v2c0 .34-.03.67-.08 1h.58a1.5 1.5 0 0 0 0-3H18ZM4 21h15v2H4v-2ZM8 1h2v4H8V1Zm4 0h2v4h-2V1Z"/></svg>
+                </button>
+                <button id="onboard-map-btn" class="icon-btn mode-data-refresh-btn onboard-map-btn" type="button" title="Otwórz mapę" aria-label="Otwórz mapę" data-i18n-title="onboard.openMap" data-i18n-aria-label="onboard.openMap">
+                    <svg class="onboard-map-btn__map-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-6-2-6 2v16l6-2 6 2 6-2V3l-6 2Zm-5-0.61 4 1.33v12.89l-4-1.33V4.39Zm-5 2.05 3-1v11.84l-3 1V6.44Zm14 11.12-3 1V6.72l3-1v11.84Z"/></svg>
+                    <svg class="onboard-map-btn__close-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.41 4.29 19.71 2.88 18.29 9.17 12 2.88 5.71 4.29 4.29l6.3 6.3 6.3-6.3 1.41 1.42Z"/></svg>
+                </button>
                 <button id="onboard-data-refresh-btn" class="icon-btn mode-data-refresh-btn" type="button" title="Odśwież dane pociągu" aria-label="Odśwież dane pociągu" data-i18n-title="onboard.refresh" data-i18n-aria-label="onboard.refresh">
                     <span aria-hidden="true">↻</span>
                 </button>
@@ -86,6 +96,11 @@
         </header>
 
         <div id="onboard-api-warning" class="mode-api-warning" role="alert" hidden data-i18n="api.staleWarning">Zewnętrzna awaria API SimRail niezależna od programu SIP. Dane mogą być nieaktualne</div>
+
+        <section id="onboard-map-view" class="onboard-map-view" hidden aria-label="Mapa SimRail" data-i18n-aria-label="onboard.mapAria">
+            <div id="onboard-map-loading" class="onboard-map-message" data-i18n="onboard.mapLoading">Ładowanie mapy...</div>
+            <webview id="onboard-map-webview" class="onboard-map-webview" partition="persist:simrail-map" webpreferences="contextIsolation=yes,nodeIntegration=no"></webview>
+        </section>
 
         <main class="sip-content">
             <section class="current-status">
@@ -131,6 +146,13 @@
                 <div class="plk-station-name" data-i18n="station.stationEmpty">STACJA: ---</div>
             </div>
             <div class="plk-right">
+                <button class="support-project-btn" type="button" aria-label="Wesprzyj projekt" data-i18n-aria-label="support.project">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h12v2h1.5a3.5 3.5 0 0 1 0 7H17.2A6 6 0 0 1 12 19H10a6 6 0 0 1-6-6V7h1Zm1 2v4a4 4 0 0 0 4 4h2a4 4 0 0 0 4-4V9H6Zm12 2v2c0 .34-.03.67-.08 1h.58a1.5 1.5 0 0 0 0-3H18ZM4 21h15v2H4v-2ZM8 1h2v4H8V1Zm4 0h2v4h-2V1Z"/></svg>
+                </button>
+                <button id="station-map-btn" class="icon-btn mode-data-refresh-btn onboard-map-btn" type="button" title="Otwórz mapę" aria-label="Otwórz mapę" data-i18n-title="station.openMap" data-i18n-aria-label="station.openMap">
+                    <svg class="onboard-map-btn__map-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-6-2-6 2v16l6-2 6 2 6-2V3l-6 2Zm-5-0.61 4 1.33v12.89l-4-1.33V4.39Zm-5 2.05 3-1v11.84l-3 1V6.44Zm14 11.12-3 1V6.72l3-1v11.84Z"/></svg>
+                    <svg class="onboard-map-btn__close-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.41 4.29 19.71 2.88 18.29 9.17 12 2.88 5.71 4.29 4.29l6.3 6.3 6.3-6.3 1.41 1.42Z"/></svg>
+                </button>
                 <button id="station-data-refresh-btn" class="icon-btn mode-data-refresh-btn" type="button" title="Odśwież dane tablicy" aria-label="Odśwież dane tablicy" data-i18n-title="station.refresh" data-i18n-aria-label="station.refresh">
                     <span aria-hidden="true">↻</span>
                 </button>
@@ -148,6 +170,11 @@
         </header>
 
         <div id="station-api-warning" class="mode-api-warning" role="alert" hidden data-i18n="api.staleWarning">Zewnętrzna awaria API SimRail niezależna od programu SIP. Dane mogą być nieaktualne</div>
+
+        <section id="station-map-view" class="onboard-map-view" hidden aria-label="Mapa SimRail" data-i18n-aria-label="station.mapAria">
+            <div id="station-map-loading" class="onboard-map-message" data-i18n="station.mapLoading">Ładowanie mapy...</div>
+            <webview id="station-map-webview" class="onboard-map-webview" partition="persist:simrail-map" webpreferences="contextIsolation=yes,nodeIntegration=no"></webview>
+        </section>
 
         <div class="plk-board">
             <div class="plk-board-title" data-i18n="station.departuresTitle">ODJAZDY / DEPARTURES</div>
@@ -220,6 +247,10 @@
                         <input class="station-reverb-toggle" type="checkbox" checked>
                         <span data-i18n="settings.stationReverb">Pogłos zapowiedzi stacyjnych</span>
                     </label>
+                    <label class="settings-toggle-row">
+                        <input class="station-announcement-ticker-toggle" type="checkbox" checked>
+                        <span data-i18n="settings.stationAnnouncementTicker">Pokazuj pasek z treścią zapowiedzi</span>
+                    </label>
                     <div id="settings-refresh-countdown" class="refresh-countdown" data-i18n="settings.refreshCountdownInitial">Odświeżanie tablicy za: 15s</div>
                 </section>
 
@@ -261,13 +292,18 @@
         <div class="modal-content whats-new-content">
             <button id="close-whats-new-icon" class="whats-new-close-icon" type="button" aria-label="Zamknij okno" data-i18n-aria-label="common.closeWindow">&times;</button>
             <div class="whats-new-heading">
-                <span id="whats-new-version" class="whats-new-version">Wersja 2.2.3</span>
+                <span id="whats-new-version" class="whats-new-version">Wersja 2.3.0</span>
                 <h2 id="whats-new-title" data-i18n="whatsNew.title">Co nowego w SimRail SIP by Urso?</h2>
                 <p data-i18n="whatsNew.subtitle">Najważniejsze zmiany i usprawnienia w tej wersji programu.</p>
             </div>
             <ul class="whats-new-list">
-                <li data-i18n-html="whatsNew.stationReverb"><strong>Realistyczniejsze zapowiedzi stacyjne:</strong> głos syntezatora w trybie dyżurnego może teraz korzystać z pogłosu imitującego nagłośnienie prawdziwej stacji.</li>
-                <li data-i18n-html="whatsNew.onboardRadioEffect"><strong>Radiowe brzmienie w kabinie:</strong> zapowiedzi pokładowe syntezatora i lektora mogą być odtwarzane z efektem krótkofalówki. Oba efekty można niezależnie wyłączyć w ustawieniach.</li>
+                <li data-i18n-html="whatsNew.maps"><strong>Mapa SimRail w obu trybach:</strong> mapę można otworzyć bez opuszczania programu, a po ponownym otwarciu zachowuje ostatni widok.</li>
+                <li data-i18n-html="whatsNew.carriers"><strong>Rozpoznawanie przewoźników:</strong> tablica rozpoznaje Intercity, ŁKA, POLREGIO, Koleje Mazowieckie i Koleje Śląskie oraz używa nazw przewoźników w zapowiedziach.</li>
+                <li data-i18n-html="whatsNew.stationBoard"><strong>Bardziej realistyczny tryb stacyjny:</strong> poprawiono kierunki, stacje końcowe, komunikaty opóźnień i informacje o miejscu odjazdu. Wiersz zapowiadanego pociągu jest podświetlany.</li>
+                <li data-i18n-html="whatsNew.ticker"><strong>Większa kontrola nad tablicą:</strong> pasek z przewijaną treścią zapowiedzi można teraz ukryć w ustawieniach.</li>
+                <li data-i18n-html="whatsNew.pendolino"><strong>Muzyka postoju Pendolino:</strong> w pociągach EIP podczas postoju na stacji odtwarzana jest muzyka pokładowa.</li>
+                <li data-i18n-html="whatsNew.settings"><strong>Zapamiętywanie ustawień i lepszy test:</strong> program zachowuje poziom głośności, a test zapowiedzi dopasowuje się do bieżącego trybu, lektora i efektów dźwiękowych.</li>
+                <li data-i18n-html="whatsNew.support"><strong>Wsparcie projektu:</strong> nowy przycisk z filiżanką pozwala szybko otworzyć stronę dobrowolnego wsparcia projektu.</li>
             </ul>
             <button id="close-whats-new" class="mode-btn whats-new-confirm" type="button" data-i18n="whatsNew.confirm">Rozumiem</button>
         </div>

@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
-const APP_BUILD_TAG = 'simrail-sip-by-urso-2.2.3-release-2026-09-11';
+const APP_BUILD_TAG = 'simrail-sip-by-urso-2.3.0-release-2026-09-21';
 console.log(`[SimRail SIP by Urso] Build: ${APP_BUILD_TAG}`);
 
 const APP_LANGUAGE_STORAGE_KEY = 'simrail-sip:interface-language';
@@ -14,6 +14,7 @@ const UI_TRANSLATIONS = Object.freeze({
         'common.loadingData': 'Wczytywanie...',
         'common.back': 'Powrót do wyboru',
         'common.close': 'Zamknij',
+        'support.project': 'Wesprzyj projekt',
         'common.closeWindow': 'Zamknij okno',
         'settings.open': 'Ustawienia',
         'settings.openAria': 'Otwórz ustawienia',
@@ -29,6 +30,7 @@ const UI_TRANSLATIONS = Object.freeze({
         'settings.stationMessages': 'Komunikaty stacyjne',
         'settings.randomMessages': 'Losowe komunikaty co 5 minut',
         'settings.stationReverb': 'Pogłos zapowiedzi stacyjnych',
+        'settings.stationAnnouncementTicker': 'Pokazuj pasek z treścią zapowiedzi',
         'settings.refreshCountdownInitial': 'Odświeżanie tablicy za: 15s',
         'settings.onboardAnnouncements': 'Zapowiedzi pokładowe',
         'settings.onboardRadioEffect': 'Efekt krótkofalówki w zapowiedziach pokładowych',
@@ -65,6 +67,11 @@ const UI_TRANSLATIONS = Object.freeze({
         'setup.noStations': 'Brak stacji',
         'setup.apiError': 'Błąd API SIT',
         'onboard.refresh': 'Odśwież dane pociągu',
+        'onboard.openMap': 'Otwórz mapę',
+        'onboard.closeMap': 'Zamknij mapę',
+        'onboard.mapAria': 'Mapa SimRail',
+        'onboard.mapLoading': 'Ładowanie mapy...',
+        'onboard.mapUnavailable': 'Nie udało się załadować mapy. Zamknij ją i spróbuj ponownie.',
         'onboard.nextStation': 'NASTĘPNA STACJA:',
         'onboard.station': 'STACJA:',
         'onboard.plannedArrival': 'PLANOWY PRZYJAZD:',
@@ -87,6 +94,11 @@ const UI_TRANSLATIONS = Object.freeze({
         'station.stationEmpty': 'STACJA: ---',
         'station.stationNamed': 'STACJA: {station}',
         'station.refresh': 'Odśwież dane tablicy',
+        'station.openMap': 'Otwórz mapę',
+        'station.closeMap': 'Zamknij mapę',
+        'station.mapAria': 'Mapa SimRail',
+        'station.mapLoading': 'Ładowanie mapy...',
+        'station.mapUnavailable': 'Nie udało się załadować mapy. Zamknij ją i spróbuj ponownie.',
         'station.dispatchedTrains': 'Odprawione Pociągi',
         'station.cancelledTrains': 'Pociągi odwołane',
         'station.departuresTitle': 'ODJAZDY / DEPARTURES',
@@ -105,8 +117,11 @@ const UI_TRANSLATIONS = Object.freeze({
         'station.noData': 'Brak danych do wyświetlenia. Użyj przycisku odświeżania.',
         'station.emptyBoard': 'Brak zaplanowanych przejazdów przez stację.',
         'station.activeOnServer': 'Aktualnie na całym serwerze znajduje się {count} aktywnych pociągów.',
+        'station.carrierUnknown': 'Przewoźnik nieokreślony',
         'station.typeRegional': 'Osobowy / Regionalny',
-        'station.typeExpressPremium': 'Intercity / Express Premium',
+        'station.typeExpressIntercity': 'Dalekobieżny / Express InterCity',
+        'station.typeIntercity': 'Dalekobieżny / InterCity',
+        'station.typeExpressPremium': 'Dalekobieżny / Express InterCity Premium',
         'station.typeLkaExpress': 'Regionalny / Pośpieszny ŁKA',
         'station.typeLongDistance': 'Dalekobieżny / Intercity',
         'station.typeFastPassenger': 'Pośpieszny / Osobowy',
@@ -159,8 +174,13 @@ const UI_TRANSLATIONS = Object.freeze({
         'whatsNew.version': 'Wersja {version}',
         'whatsNew.title': 'Co nowego w SimRail SIP by Urso?',
         'whatsNew.subtitle': 'Najważniejsze zmiany i usprawnienia w tej wersji programu.',
-        'whatsNew.stationReverb': '<strong>Realistyczniejsze zapowiedzi stacyjne:</strong> głos syntezatora w trybie dyżurnego może teraz korzystać z pogłosu imitującego nagłośnienie prawdziwej stacji.',
-        'whatsNew.onboardRadioEffect': '<strong>Radiowe brzmienie w kabinie:</strong> zapowiedzi pokładowe syntezatora i lektora mogą być odtwarzane z efektem krótkofalówki. Oba efekty można niezależnie wyłączyć w ustawieniach.',
+        'whatsNew.maps': '<strong>Mapa SimRail w obu trybach:</strong> mapę można otworzyć bez opuszczania programu, a po ponownym otwarciu zachowuje ostatni widok.',
+        'whatsNew.carriers': '<strong>Rozpoznawanie przewoźników:</strong> tablica rozpoznaje Intercity, ŁKA, POLREGIO, Koleje Mazowieckie i Koleje Śląskie oraz używa nazw przewoźników w zapowiedziach.',
+        'whatsNew.stationBoard': '<strong>Bardziej realistyczny tryb stacyjny:</strong> poprawiono kierunki, stacje końcowe, komunikaty opóźnień i informacje o miejscu odjazdu. Wiersz zapowiadanego pociągu jest podświetlany.',
+        'whatsNew.ticker': '<strong>Większa kontrola nad tablicą:</strong> pasek z przewijaną treścią zapowiedzi można teraz ukryć w ustawieniach.',
+        'whatsNew.pendolino': '<strong>Muzyka postoju Pendolino:</strong> w pociągach EIP podczas postoju na stacji odtwarzana jest muzyka pokładowa.',
+        'whatsNew.settings': '<strong>Zapamiętywanie ustawień i lepszy test:</strong> program zachowuje poziom głośności, a test zapowiedzi dopasowuje się do bieżącego trybu, lektora i efektów dźwiękowych.',
+        'whatsNew.support': '<strong>Wsparcie projektu:</strong> nowy przycisk z filiżanką pozwala szybko otworzyć stronę dobrowolnego wsparcia projektu.',
         'whatsNew.confirm': 'Rozumiem'
     },
     en: {
@@ -168,6 +188,7 @@ const UI_TRANSLATIONS = Object.freeze({
         'common.loadingData': 'Loading data...',
         'common.back': 'Back to selection',
         'common.close': 'Close',
+        'support.project': 'Support the project',
         'common.closeWindow': 'Close window',
         'settings.open': 'Settings',
         'settings.openAria': 'Open settings',
@@ -183,6 +204,7 @@ const UI_TRANSLATIONS = Object.freeze({
         'settings.stationMessages': 'Station messages',
         'settings.randomMessages': 'Random messages every 5 minutes',
         'settings.stationReverb': 'Station announcement reverb',
+        'settings.stationAnnouncementTicker': 'Show the announcement text bar',
         'settings.refreshCountdownInitial': 'Board refresh in: 15s',
         'settings.onboardAnnouncements': 'Onboard announcements',
         'settings.onboardRadioEffect': 'Radio effect for onboard announcements',
@@ -219,6 +241,11 @@ const UI_TRANSLATIONS = Object.freeze({
         'setup.noStations': 'No stations',
         'setup.apiError': 'SIT API Error',
         'onboard.refresh': 'Refresh train data',
+        'onboard.openMap': 'Open map',
+        'onboard.closeMap': 'Close map',
+        'onboard.mapAria': 'SimRail map',
+        'onboard.mapLoading': 'Loading map...',
+        'onboard.mapUnavailable': 'The map could not be loaded. Close it and try again.',
         'onboard.nextStation': 'NEXT STATION:',
         'onboard.station': 'STATION:',
         'onboard.plannedArrival': 'SCHEDULED ARRIVAL:',
@@ -241,6 +268,11 @@ const UI_TRANSLATIONS = Object.freeze({
         'station.stationEmpty': 'STATION: ---',
         'station.stationNamed': 'STATION: {station}',
         'station.refresh': 'Refresh board data',
+        'station.openMap': 'Open map',
+        'station.closeMap': 'Close map',
+        'station.mapAria': 'SimRail map',
+        'station.mapLoading': 'Loading map...',
+        'station.mapUnavailable': 'The map could not be loaded. Close it and try again.',
         'station.dispatchedTrains': 'Dispatched Trains',
         'station.cancelledTrains': 'Cancelled Trains',
         'station.departuresTitle': 'DEPARTURES',
@@ -259,8 +291,11 @@ const UI_TRANSLATIONS = Object.freeze({
         'station.noData': 'No data to display. Use the refresh button.',
         'station.emptyBoard': 'No scheduled services through this station.',
         'station.activeOnServer': 'There are currently {count} active trains on the server.',
+        'station.carrierUnknown': 'Carrier not specified',
         'station.typeRegional': 'Passenger / Regional',
-        'station.typeExpressPremium': 'Intercity / Express Premium',
+        'station.typeExpressIntercity': 'Long-distance / Express InterCity',
+        'station.typeIntercity': 'Long-distance / InterCity',
+        'station.typeExpressPremium': 'Long-distance / Express InterCity Premium',
         'station.typeLkaExpress': 'Regional / ŁKA Express',
         'station.typeLongDistance': 'Long-distance / Intercity',
         'station.typeFastPassenger': 'Fast / Passenger',
@@ -313,8 +348,13 @@ const UI_TRANSLATIONS = Object.freeze({
         'whatsNew.version': 'Version {version}',
         'whatsNew.title': "What's new in SimRail SIP by Urso?",
         'whatsNew.subtitle': 'The most important changes and improvements in this version.',
-        'whatsNew.stationReverb': '<strong>More realistic station announcements:</strong> synthesized dispatcher-mode speech can now use reverb that imitates a real station public-address system.',
-        'whatsNew.onboardRadioEffect': '<strong>Radio sound in the cab:</strong> synthesized and recorded onboard announcements can now use a two-way-radio effect. Both effects can be disabled independently in settings.',
+        'whatsNew.maps': '<strong>SimRail map in both modes:</strong> the map can be opened without leaving the application and preserves its last view when reopened.',
+        'whatsNew.carriers': '<strong>Train operator recognition:</strong> the board recognizes Intercity, ŁKA, POLREGIO, Koleje Mazowieckie and Koleje Śląskie and uses operator names in announcements.',
+        'whatsNew.stationBoard': '<strong>More realistic station mode:</strong> destinations, terminal stations, delay announcements and departure location information have been improved. The announced train row is highlighted.',
+        'whatsNew.ticker': '<strong>More control over the board:</strong> the scrolling announcement text bar can now be hidden in settings.',
+        'whatsNew.pendolino': '<strong>Pendolino stop music:</strong> onboard music is played in EIP trains while stopped at a station.',
+        'whatsNew.settings': '<strong>Saved settings and improved testing:</strong> the application remembers the volume level, while the announcement test follows the current mode, recorded voice and sound effects.',
+        'whatsNew.support': '<strong>Support the project:</strong> a new coffee-cup button quickly opens the voluntary project support page.',
         'whatsNew.confirm': 'Got it'
     }
 });
@@ -430,11 +470,20 @@ const refreshServersBtn = document.getElementById('refresh-servers-btn');
 const startBtn = document.getElementById('start-btn');
 const backBtns = document.querySelectorAll('.back-btn');
 const onboardDataRefreshBtn = document.getElementById('onboard-data-refresh-btn');
+const onboardMapBtn = document.getElementById('onboard-map-btn');
+const onboardMapView = document.getElementById('onboard-map-view');
+const onboardMapWebview = document.getElementById('onboard-map-webview');
+const onboardMapLoading = document.getElementById('onboard-map-loading');
 const stationDataRefreshBtn = document.getElementById('station-data-refresh-btn');
+const stationMapBtn = document.getElementById('station-map-btn');
+const stationMapView = document.getElementById('station-map-view');
+const stationMapWebview = document.getElementById('station-map-webview');
+const stationMapLoading = document.getElementById('station-map-loading');
 const onboardApiWarning = document.getElementById('onboard-api-warning');
 const stationApiWarning = document.getElementById('station-api-warning');
 
 const settingsBtns = document.querySelectorAll('.settings-btn');
+const supportProjectButtons = document.querySelectorAll('.support-project-btn');
 const settingsModal = document.getElementById('settings-modal');
 const closeSettingsButton = document.getElementById('close-settings');
 const closeSettingsIcon = document.getElementById('close-settings-icon');
@@ -443,14 +492,17 @@ const appLanguageSelect = document.getElementById('app-language-select');
 const volumeSlidersArray = document.querySelectorAll('.volume-slider');
 const randomStationAnnouncementsToggles = document.querySelectorAll('.random-station-announcements-toggle');
 const stationReverbToggles = document.querySelectorAll('.station-reverb-toggle');
+const stationAnnouncementTickerToggles = document.querySelectorAll('.station-announcement-ticker-toggle');
 const onboardRadioEffectToggles = document.querySelectorAll('.onboard-radio-effect-toggle');
 const regionalAnnouncementModeSelects = document.querySelectorAll('.regional-announcement-mode-select');
 const longDistanceAnnouncementModeSelects = document.querySelectorAll('.long-distance-announcement-mode-select');
 
 const RANDOM_STATION_ANNOUNCEMENTS_STORAGE_KEY = 'simrail-sip:random-station-announcements-enabled';
 const STATION_REVERB_STORAGE_KEY = 'simrail-sip:station-reverb-enabled';
+const STATION_ANNOUNCEMENT_TICKER_STORAGE_KEY = 'simrail-sip:station-announcement-ticker-enabled';
 const ONBOARD_RADIO_EFFECT_STORAGE_KEY = 'simrail-sip:onboard-radio-effect-enabled';
 const REGIONAL_ANNOUNCEMENT_MODE_STORAGE_KEY = 'simrail-sip:regional-announcement-mode';
+const TTS_VOLUME_STORAGE_KEY = 'simrail-sip:tts-volume';
 const ANNOUNCEMENT_MODE_SYNTHESIZER = 'synthesizer';
 const ANNOUNCEMENT_MODE_RECORDED = 'recorded';
 const RANDOM_STATION_ANNOUNCEMENT_INTERVAL_MS = 5 * 60000;
@@ -463,6 +515,7 @@ const RANDOM_STATION_ANNOUNCEMENTS = [
 let randomStationAnnouncementsEnabled = true;
 let randomStationAnnouncementTimer = null;
 let stationReverbEnabled = true;
+let stationAnnouncementTickerEnabled = true;
 let onboardRadioEffectEnabled = true;
 
 try {
@@ -515,6 +568,33 @@ stationReverbToggles.forEach(toggle => {
         } catch (err) {
             console.warn('[POGŁOS STACYJNY] Nie udało się zapisać ustawienia:', err);
         }
+    });
+});
+
+try {
+    stationAnnouncementTickerEnabled = localStorage.getItem(STATION_ANNOUNCEMENT_TICKER_STORAGE_KEY) !== 'false';
+} catch (err) {
+    console.warn('[PASEK ZAPOWIEDZI] Nie udało się odczytać ustawienia:', err);
+}
+
+stationAnnouncementTickerToggles.forEach(toggle => {
+    toggle.checked = stationAnnouncementTickerEnabled;
+    toggle.addEventListener('change', () => {
+        stationAnnouncementTickerEnabled = toggle.checked;
+        stationAnnouncementTickerToggles.forEach(otherToggle => {
+            otherToggle.checked = stationAnnouncementTickerEnabled;
+        });
+
+        try {
+            localStorage.setItem(
+                STATION_ANNOUNCEMENT_TICKER_STORAGE_KEY,
+                String(stationAnnouncementTickerEnabled)
+            );
+        } catch (err) {
+            console.warn('[PASEK ZAPOWIEDZI] Nie udało się zapisać ustawienia:', err);
+        }
+
+        if (!stationAnnouncementTickerEnabled) hideStationAnnouncementTicker();
     });
 });
 
@@ -598,6 +678,23 @@ function closeSettingsModal() {
 }
 
 settingsBtns.forEach(btn => btn.addEventListener('click', openSettingsModal));
+supportProjectButtons.forEach(button => {
+    button.addEventListener('click', async () => {
+        if (button.disabled) return;
+        button.disabled = true;
+
+        try {
+            const result = await ipcRenderer.invoke('open-support-page');
+            if (!result?.success) {
+                throw new Error(result?.error || 'Nieznany błąd otwierania strony wsparcia.');
+            }
+        } catch (err) {
+            console.error('[WSPARCIE] Nie udało się otworzyć strony:', err);
+        } finally {
+            button.disabled = false;
+        }
+    });
+});
 closeSettingsButton?.addEventListener('click', closeSettingsModal);
 closeSettingsIcon?.addEventListener('click', closeSettingsModal);
 
@@ -609,22 +706,43 @@ appLanguageSelect?.addEventListener('change', () => {
     setInterfaceLanguage(appLanguageSelect.value);
 });
 
+try {
+    const savedVolume = Number.parseFloat(localStorage.getItem(TTS_VOLUME_STORAGE_KEY));
+    if (Number.isFinite(savedVolume)) {
+        currentTtsVolume = Math.max(0, Math.min(1, savedVolume));
+    }
+} catch (err) {
+    console.warn('[GŁOŚNOŚĆ] Nie udało się odczytać ustawienia:', err);
+}
+
 volumeSlidersArray.forEach(slider => {
-    slider.addEventListener('input', (e) => { 
-        currentTtsVolume = parseFloat(e.target.value); 
-        volumeSlidersArray.forEach(s => s.value = e.target.value); 
+    slider.value = String(currentTtsVolume);
+    slider.addEventListener('input', (event) => {
+        const selectedVolume = Number.parseFloat(event.target.value);
+        if (!Number.isFinite(selectedVolume)) return;
+
+        currentTtsVolume = Math.max(0, Math.min(1, selectedVolume));
+        volumeSlidersArray.forEach(otherSlider => {
+            otherSlider.value = String(currentTtsVolume);
+        });
         activeAudioElements.forEach(audio => {
             if (audio) audio.volume = currentTtsVolume;
         });
+
+        try {
+            localStorage.setItem(TTS_VOLUME_STORAGE_KEY, String(currentTtsVolume));
+        } catch (err) {
+            console.warn('[GŁOŚNOŚĆ] Nie udało się zapisać ustawienia:', err);
+        }
     });
 });
 
 testAnnouncementBtn?.addEventListener('click', () => {
-    playGongAndSpeak('To jest testowa zapowiedź systemu informacji pasażerskiej. Dźwięk działa poprawnie.', 'pl-PL-ZofiaNeural');
+    playCurrentModeTestAnnouncement();
 });
 
 const CHANGELOG_STORAGE_KEY = 'simrail-sip:last-shown-changelog-version';
-const CHANGELOG_FALLBACK_VERSION = '2.2.3';
+const CHANGELOG_FALLBACK_VERSION = '2.3.0';
 const whatsNewModal = document.getElementById('whats-new-modal');
 const whatsNewVersion = document.getElementById('whats-new-version');
 const closeWhatsNewButton = document.getElementById('close-whats-new');
@@ -1292,9 +1410,22 @@ function formatTrainNumberForTTS(trainName) {
 let audioQueue = [];
 let isPlayingAudio = false;
 let activeStationTickerToken = 0;
+let activeStationAnnouncementJourneyId = null;
 
 function isStationBoardVisible() {
     return appMode === 'station' && stationScreen.style.display !== 'none';
+}
+
+function setActiveStationAnnouncementJourney(journeyId = null) {
+    activeStationAnnouncementJourneyId = journeyId ? String(journeyId) : null;
+
+    document.querySelectorAll('#station-departures-body tr[data-journey-id]').forEach(row => {
+        row.classList.toggle(
+            'is-announcing',
+            Boolean(activeStationAnnouncementJourneyId)
+                && row.dataset.journeyId === activeStationAnnouncementJourneyId
+        );
+    });
 }
 
 function getStationAnnouncementTicker() {
@@ -1331,7 +1462,7 @@ function moveApiStatusAboveAnnouncementTicker(active) {
 }
 
 function showStationAnnouncementTicker(text, durationSeconds) {
-    if (!isStationBoardVisible() || !text) return null;
+    if (!stationAnnouncementTickerEnabled || !isStationBoardVisible() || !text) return null;
 
     const ticker = getStationAnnouncementTicker();
     const textElement = ticker.querySelector('.station-announcement-ticker__text');
@@ -1383,6 +1514,7 @@ function base64ToObjectUrl(base64, mimeType = 'audio/mpeg') {
 }
 
 const REGIONAL_RECORDED_STATION_DIRECTORY = path.join(__dirname, 'zapowiedzi', 'nazwy stacji p. regio');
+const PENDOLINO_STOP_MUSIC_PATH = path.join(__dirname, 'zapowiedzi', 'pendolino-stop.mp3');
 const REGIONAL_RECORDED_PHRASE_CONFIGS = Object.freeze({
     pl: Object.freeze({ directory: 'Regio zapowiedź PL', prefix: 'r-pl' }),
     en: Object.freeze({ directory: 'Regio zapowiedź EN', prefix: 'r-en' })
@@ -1475,6 +1607,73 @@ function playGongAudio() {
             console.error('gong.play() error:', err);
             finish();
         });
+    });
+}
+
+let pendolinoStopMusicAudio = null;
+let pendolinoStopMusicFileWarningShown = false;
+
+function stopPendolinoStopMusic() {
+    const audio = pendolinoStopMusicAudio;
+    if (!audio) return;
+
+    pendolinoStopMusicAudio = null;
+    activeAudioElements = activeAudioElements.filter(item => item !== audio);
+
+    try {
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+    } catch (err) {}
+}
+
+function isPendolinoEipTrain() {
+    return normalizeCommercialTrainCategory(
+        activeTrainCarrierInfo?.trainCommercialCategory
+    ) === 'EIP';
+}
+
+function updatePendolinoStopMusic(speed) {
+    const activeStop = targetStationList.find(stop => stop.current);
+    const numericSpeed = speed === null || speed === undefined || speed === ''
+        ? Number.NaN
+        : Number(speed);
+    const displayedSpeed = Number.isFinite(numericSpeed) ? Math.round(numericSpeed) : null;
+    const shouldPlay = appMode === 'onboard'
+        && sipScreen.style.display !== 'none'
+        && isPendolinoEipTrain()
+        && activeStop?.state === 'at-station'
+        && displayedSpeed === 0;
+
+    if (!shouldPlay) {
+        stopPendolinoStopMusic();
+        return;
+    }
+
+    if (pendolinoStopMusicAudio) return;
+
+    if (!fs.existsSync(PENDOLINO_STOP_MUSIC_PATH)) {
+        if (!pendolinoStopMusicFileWarningShown) {
+            console.warn('[PENDOLINO] Brak pliku muzyki postoju:', PENDOLINO_STOP_MUSIC_PATH);
+            pendolinoStopMusicFileWarningShown = true;
+        }
+        return;
+    }
+
+    const audio = new Audio(pathToFileURL(PENDOLINO_STOP_MUSIC_PATH).href);
+    audio.loop = true;
+    audio.volume = currentTtsVolume;
+    pendolinoStopMusicAudio = audio;
+    activeAudioElements.push(audio);
+
+    audio.onerror = () => {
+        console.error('[PENDOLINO] Nie udało się odtworzyć muzyki postoju.');
+        if (pendolinoStopMusicAudio === audio) stopPendolinoStopMusic();
+    };
+
+    audio.play().catch(err => {
+        console.error('[PENDOLINO] Błąd uruchamiania muzyki postoju:', err);
+        if (pendolinoStopMusicAudio === audio) stopPendolinoStopMusic();
     });
 }
 
@@ -1744,6 +1943,9 @@ async function processAudioQueue() {
 
     const queueItem = audioQueue.shift();
     const { text, voice, withGong } = queueItem;
+    const stationJourneyId = queueItem.stationJourneyId || null;
+
+    if (stationJourneyId) setActiveStationAnnouncementJourney(stationJourneyId);
 
     try {
         if (withGong) await playGongAudio();
@@ -1780,6 +1982,10 @@ async function processAudioQueue() {
         } catch (e) {}
     }
 
+    if (stationJourneyId && activeStationAnnouncementJourneyId === String(stationJourneyId)) {
+        setActiveStationAnnouncementJourney(null);
+    }
+
     isPlayingAudio = false;
     processAudioQueue();
 }
@@ -1789,8 +1995,8 @@ function speakText(text, voice) {
     processAudioQueue();
 }
 
-function playGongAndSpeak(text, voice) {
-    audioQueue.push({ text, voice, withGong: true, stationReverb: true });
+function playGongAndSpeak(text, voice, stationJourneyId = null) {
+    audioQueue.push({ text, voice, withGong: true, stationReverb: true, stationJourneyId });
     processAudioQueue();
 }
 
@@ -1850,6 +2056,44 @@ function announceRegionalStation(stationName, voice) {
         recordedPhrases.station,
         getRegionalStationRecordingPath(stationName)
     ], fallbackText, voice);
+}
+
+function getOnboardTestContext() {
+    const onboardModeRunning = sipScreen.style.display !== 'none';
+    const selectedOption = trainSelect?.options?.[trainSelect.selectedIndex] || null;
+    const selectedTrainInfo = selectedOption?.dataset?.trainInfo || '';
+    const selectedTrainNumber = selectedOption?.dataset?.rawNumber || '';
+    const selectedTrainType = selectedOption?.dataset?.type || '';
+    const isRegional = onboardModeRunning && activeTrainType
+        ? activeTrainType === 'REGIONAL_TRAIN'
+        : !isExpressTrainForUi(selectedTrainType, selectedTrainInfo, selectedTrainNumber);
+    const activeStop = targetStationList.find(stop => stop.current);
+    const stationName = onboardModeRunning
+        ? (activeStop?.station || activeDestination || 'Łódź Fabryczna')
+        : (selectedOption?.dataset?.destination || 'Łódź Fabryczna');
+
+    return { isRegional, stationName };
+}
+
+function playCurrentModeTestAnnouncement() {
+    if (appMode === 'station') {
+        playGongAndSpeak(
+            'To jest testowa zapowiedź stacyjnego systemu informacji pasażerskiej. Dźwięk działa poprawnie.',
+            'pl-PL-ZofiaNeural'
+        );
+        return;
+    }
+
+    const { isRegional, stationName } = getOnboardTestContext();
+    if (isRegional) {
+        announceRegionalStation(stationName, 'pl-PL-MarekNeural');
+        return;
+    }
+
+    speakText(
+        'To jest testowa zapowiedź pokładowa pociągu Intercity. Dźwięk działa poprawnie.',
+        'pl-PL-ZofiaNeural'
+    );
 }
 
 function stopRandomStationAnnouncements() {
@@ -1996,9 +2240,12 @@ let activeDestination = '';
 let activeTrainType = ''; 
 let activeTrainIsMpe = false;
 let activeTrainHasWars = false;
+let activeTrainCarrierInfo = null;
 let targetStationList = [];
 let onboardLastKnownPosition = null;
 let onboardLastDisplayedProgressRatio = 0;
+let onboardMapOpen = false;
+let stationMapOpen = false;
 
 let activeStationName = '';
 let stationTimetable = [];
@@ -2353,6 +2600,7 @@ backBtns.forEach(btn => {
         if (boardRefreshInterval) clearInterval(boardRefreshInterval);
         if (countdownInterval) clearInterval(countdownInterval);
         stopRandomStationAnnouncements();
+        stopPendolinoStopMusic();
         document.querySelectorAll('.refresh-countdown').forEach(el => el.style.display = 'none');
         
         const nextStationEl = document.querySelector('.next-station');
@@ -2368,6 +2616,8 @@ backBtns.forEach(btn => {
         if(tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 40px;">${uiText('station.stopped')}</td></tr>`;
         hideStationAnnouncementTicker();
         hideApiWarnings();
+        closeOnboardMap({ reset: true });
+        closeStationMap({ reset: true });
         setModeRefreshButtonBusy(onboardDataRefreshBtn, false);
         setModeRefreshButtonBusy(stationDataRefreshBtn, false);
         document.getElementById('departed-modal').style.display = 'none';
@@ -2505,6 +2755,158 @@ function containsTrainCategory(value, category) {
     return String(value || '').toUpperCase().includes(String(category || '').toUpperCase());
 }
 
+// Przewoźnik jest rozpoznawany wyłącznie po dokładnym oznaczeniu handlowym.
+// Kod technicznego typu pociągu (np. ROJ, MOJ, EIJ) pozostaje osobnym polem
+// i nigdy samodzielnie nie wskazuje przewoźnika.
+const TRAIN_CARRIER_DEFINITIONS = Object.freeze([
+    Object.freeze({
+        id: 'PKP_INTERCITY',
+        shortName: 'Intercity',
+        fullName: 'Intercity',
+        speechName: 'pociąg Intercity',
+        commercialCategories: Object.freeze({
+            EIP: 'Express InterCity Premium',
+            EIC: 'Express InterCity',
+            IC: 'InterCity',
+            EC: 'EuroCity',
+            TLK: 'TLK',
+            ICN: 'InterCity Night'
+        })
+    }),
+    Object.freeze({
+        id: 'LKA',
+        shortName: 'ŁKA',
+        fullName: 'Łódzka Kolej Aglomeracyjna',
+        speechName: 'pociąg Łódzkiej Kolei Aglomeracyjnej',
+        commercialCategories: Object.freeze({
+            'Ł': 'ŁKA',
+            'ŁS': 'ŁKA Sprinter'
+        })
+    }),
+    Object.freeze({
+        id: 'POLREGIO',
+        shortName: 'POLREGIO',
+        fullName: 'POLREGIO',
+        speechName: 'pociąg POLREGIO',
+        commercialCategories: Object.freeze({
+            R: 'REGIO',
+            IR: 'interREGIO'
+        })
+    }),
+    Object.freeze({
+        id: 'KOLEJE_MAZOWIECKIE',
+        shortName: 'KM',
+        fullName: 'Koleje Mazowieckie',
+        speechName: 'pociąg Kolei Mazowieckich',
+        commercialCategories: Object.freeze({
+            R1: 'R1',
+            R2: 'R2'
+        })
+    }),
+    Object.freeze({
+        id: 'KOLEJE_SLASKIE',
+        shortName: 'KŚ',
+        fullName: 'Koleje Śląskie',
+        speechName: 'pociąg Kolei Śląskich',
+        commercialCategories: Object.freeze({
+            S1: 'S1',
+            S3: 'S3',
+            S41: 'S41'
+        })
+    })
+]);
+
+const TRAIN_COMMERCIAL_CATEGORY_INDEX = new Map();
+TRAIN_CARRIER_DEFINITIONS.forEach(carrier => {
+    Object.entries(carrier.commercialCategories).forEach(([designation, categoryName]) => {
+        TRAIN_COMMERCIAL_CATEGORY_INDEX.set(designation, { carrier, categoryName });
+    });
+});
+
+const UNKNOWN_TRAIN_CARRIER = Object.freeze({
+    id: 'UNKNOWN',
+    shortName: 'Nieokreślony',
+    fullName: 'Przewoźnik nieokreślony',
+    speechName: 'pociąg pasażerski'
+});
+
+function normalizeCommercialTrainCategory(value) {
+    return String(value || '')
+        .normalize('NFKC')
+        .trim()
+        .toLocaleUpperCase('pl-PL');
+}
+
+function parseCommercialCategoryFromTrainName(value) {
+    const parts = String(value || '').normalize('NFKC').split(/\s+-\s+/);
+    if (parts.length < 2) return '';
+
+    const categoryToken = parts[1].trim().match(/^([\p{L}\p{N}]+)/u)?.[1] || '';
+    return normalizeCommercialTrainCategory(categoryToken);
+}
+
+function extractCommercialTrainCategory(...sources) {
+    let firstUnrecognizedDesignation = '';
+
+    for (const source of sources) {
+        if (!source) continue;
+
+        if (typeof source === 'object') {
+            const dedicatedValues = [
+                source.categoryExternal,
+                source.commercialCategory,
+                source.commercialDesignation,
+                source.trainCommercialCategory,
+                source.line
+            ];
+
+            for (const value of dedicatedValues) {
+                const normalized = normalizeCommercialTrainCategory(value);
+                if (!normalized) continue;
+                if (TRAIN_COMMERCIAL_CATEGORY_INDEX.has(normalized)) return normalized;
+                if (!firstUnrecognizedDesignation) firstUnrecognizedDesignation = normalized;
+            }
+
+            const normalizedLabel = normalizeCommercialTrainCategory(source.label);
+            if (TRAIN_COMMERCIAL_CATEGORY_INDEX.has(normalizedLabel)) return normalizedLabel;
+
+            const fromTrainName = parseCommercialCategoryFromTrainName(source.trainName);
+            if (TRAIN_COMMERCIAL_CATEGORY_INDEX.has(fromTrainName)) return fromTrainName;
+            if (fromTrainName && !firstUnrecognizedDesignation) {
+                firstUnrecognizedDesignation = fromTrainName;
+            }
+            continue;
+        }
+
+        const normalized = normalizeCommercialTrainCategory(source);
+        if (TRAIN_COMMERCIAL_CATEGORY_INDEX.has(normalized)) return normalized;
+
+        const fromTrainName = parseCommercialCategoryFromTrainName(source);
+        if (TRAIN_COMMERCIAL_CATEGORY_INDEX.has(fromTrainName)) return fromTrainName;
+        if (fromTrainName && !firstUnrecognizedDesignation) {
+            firstUnrecognizedDesignation = fromTrainName;
+        }
+    }
+
+    return firstUnrecognizedDesignation;
+}
+
+function recognizeTrainCarrier(...sources) {
+    const commercialCategory = extractCommercialTrainCategory(...sources);
+    const match = TRAIN_COMMERCIAL_CATEGORY_INDEX.get(commercialCategory);
+    const carrier = match?.carrier || UNKNOWN_TRAIN_CARRIER;
+
+    return {
+        carrierId: carrier.id,
+        carrierShortName: carrier.shortName,
+        carrierFullName: carrier.fullName,
+        carrierSpeechName: carrier.speechName,
+        carrierKnown: Boolean(match),
+        trainCommercialCategory: commercialCategory,
+        trainCommercialCategoryName: match?.categoryName || commercialCategory || ''
+    };
+}
+
 const FOUR_DIGIT_TRAIN_CLASS = Object.freeze({
     REGIONAL_LKA: 'REGIONAL_LKA',
     INTERCITY: 'INTERCITY'
@@ -2532,21 +2934,29 @@ function isMpeTrain(...labels) {
     return labels.some(label => containsTrainCategory(label, 'MPE'));
 }
 
-// W SimRail oznaczenie EIJ jest współdzielone przez dwa różne rodzaje pociągów.
-// Rozróżniamy je po typie transportu z API:
-// - EIJ + typ dalekobieżny => Pendolino / Express InterCity Premium,
-// - EIJ + pozostały typ pasażerski => regionalny pośpieszny ŁKA.
-function isEijPendolino(type, ...labels) {
-    const isEij = labels.some(label => containsTrainCategory(label, 'EIJ'));
-    return isEij && LONG_DISTANCE_EXPRESS_TYPES.has(String(type || '').trim());
+function isEieTrain(...labels) {
+    return labels.some(label => containsTrainCategory(label, 'EIE'));
 }
 
-function isEijRegionalLka(type, ...labels) {
-    const isEij = labels.some(label => containsTrainCategory(label, 'EIJ'));
-    return isEij && !isEijPendolino(type, ...labels);
+function isEijTrain(...labels) {
+    return labels.some(label => containsTrainCategory(label, 'EIJ'));
+}
+
+function isEceTrain(...labels) {
+    return labels.some(label => containsTrainCategory(label, 'ECE'));
+}
+
+function isEieRegionalLka(...labels) {
+    return isEieTrain(...labels)
+        && classifyFourDigitTrain(...labels) === FOUR_DIGIT_TRAIN_CLASS.REGIONAL_LKA;
 }
 
 function isExpressTrainForUi(type, ...labels) {
+    // Kategorie dalekobieżne mają pierwszeństwo przed ogólną regułą numerów
+    // czterocyfrowych. Wyjątkiem jest wyłącznie EIE 19xx/91xx (ŁKA).
+    if (isEijTrain(...labels) || isEceTrain(...labels) || isMpeTrain(...labels)) return true;
+    if (isEieTrain(...labels)) return !isEieRegionalLka(...labels);
+
     const fourDigitClass = classifyFourDigitTrain(...labels);
     if (fourDigitClass) {
         return fourDigitClass === FOUR_DIGIT_TRAIN_CLASS.INTERCITY;
@@ -2557,8 +2967,8 @@ function isExpressTrainForUi(type, ...labels) {
     const hasLs = labels.some(label => containsTrainCategory(label, 'ŁS'));
     const hasLka = labels.some(label => containsTrainCategory(label, 'ŁKA'));
 
-    if (hasEip || hasMpe || isEijPendolino(type, ...labels)) return true;
-    if (hasLs || hasLka || isEijRegionalLka(type, ...labels)) return false;
+    if (hasEip || hasMpe) return true;
+    if (hasLs || hasLka) return false;
 
     return LONG_DISTANCE_EXPRESS_TYPES.has(String(type || '').trim());
 }
@@ -2697,41 +3107,25 @@ async function refreshStationSpecificRealtime(t) {
 }
 
 function getStationTrainSpeechInfo(t) {
-    let trainType = 'pociąg regionalny';
-    let reservationSuffix = '';
+    const carrier = recognizeTrainCarrier(t);
+    const trainType = carrier.carrierSpeechName;
+    const reservationSuffix = carrier.carrierId === 'PKP_INTERCITY'
+        ? ' Pociąg jest objęty obowiązkową rezerwacją miejsc.'
+        : '';
     const rawNumber = t.trainName.split(' ')[1] || t.trainName;
-    const fourDigitClass = classifyFourDigitTrain(rawNumber, t.trainName);
-
-    if (fourDigitClass === FOUR_DIGIT_TRAIN_CLASS.REGIONAL_LKA) {
-        trainType = 'pociąg regionalny pośpieszny ŁKA';
-    } else if (fourDigitClass === FOUR_DIGIT_TRAIN_CLASS.INTERCITY && isMpeTrain(t.trainCategory, t.trainName)) {
-        trainType = 'pociąg dalekobieżny TLK';
-        reservationSuffix = ' Pociąg jest objęty obowiązkową rezerwacją miejsc.';
-    } else if (fourDigitClass === FOUR_DIGIT_TRAIN_CLASS.INTERCITY) {
-        trainType = 'pociąg pospieszny Intercity';
-        reservationSuffix = ' Pociąg jest objęty obowiązkową rezerwacją miejsc.';
-    } else if (isEijPendolino(t.trainTypeRaw, t.trainCategory, t.trainName)) {
-        trainType = 'pociąg Express Intercity Premium';
-        reservationSuffix = ' Pociąg jest objęty obowiązkową rezerwacją miejsc.';
-    } else if (isEijRegionalLka(t.trainTypeRaw, t.trainCategory, t.trainName)) {
-        trainType = 'pociąg regionalny pośpieszny ŁKA';
-    } else if (t.trainCategory.includes('EIP') || t.trainName.includes('EIP')) {
-        trainType = 'pociąg dalekobieżny intercity';
-        reservationSuffix = ' Pociąg jest objęty obowiązkową rezerwacją miejsc.';
-    } else if (t.trainCategory.includes('Łs') || t.trainName.includes('Łs')) {
-        trainType = 'pociąg pośpieszny';
-    } else if (isMpeTrain(t.trainCategory, t.trainName)) {
-        trainType = 'pociąg dalekobieżny TLK';
-        reservationSuffix = ' Pociąg jest objęty obowiązkową rezerwacją miejsc.';
-    } else if (LONG_DISTANCE_EXPRESS_TYPES.has(t.trainTypeRaw)) {
-        trainType = 'pociąg pospieszny Intercity';
-        reservationSuffix = ' Pociąg jest objęty obowiązkową rezerwacją miejsc.';
-    }
 
     const number = formatTrainNumberForTTS(rawNumber);
     const viaText = t.viaText ? `, przez stacje: ${t.viaText}` : '';
 
     return { trainType, reservationSuffix, number, viaText };
+}
+
+function getStationDirectionSpeech(t, viaText = '') {
+    return t.isTerminalStation ? '' : ` do stacji ${t.destination}${viaText}`;
+}
+
+function getStationTerminalSpeech(t) {
+    return t.isTerminalStation ? ' Pociąg kończy bieg.' : '';
 }
 
 // API SimRail może zwracać numer peronu jako liczbę rzymską (np. II),
@@ -2878,6 +3272,22 @@ function ordinalLocativePolish(value) {
     return String(number);
 }
 
+// Dopełniacz rodzaju męskiego wymagany po „z toru” i „z peronu”:
+// pierwszym -> pierwszego, dwudziestym pierwszym -> dwudziestego pierwszego.
+function ordinalGenitivePolish(value) {
+    const locative = ordinalLocativePolish(value);
+    if (!locative) return null;
+
+    return locative
+        .split(/\s+/)
+        .map(word => {
+            if (word.endsWith('ym')) return `${word.slice(0, -2)}ego`;
+            if (word.endsWith('im')) return `${word.slice(0, -2)}iego`;
+            return word;
+        })
+        .join(' ');
+}
+
 function getFirstNestedValue(source, keyNames, maxDepth = 4) {
     if (!source || typeof source !== 'object') return null;
 
@@ -2963,20 +3373,25 @@ function extractStationPlatformTrack(stationEvents, mainEvent, trainActiveData =
 }
 
 function buildStationLocationSpeech(t, departureContext = false) {
+    if (departureContext) {
+        const platformLocative = ordinalLocativePolish(t.platform);
+        const platformGenitive = ordinalGenitivePolish(t.platform);
+        const track = ordinalGenitivePolish(t.track);
+
+        if (!platformGenitive && !track) return '';
+        if (platformLocative && track) {
+            return ` Pociąg odjedzie z toru ${track} przy peronie ${platformLocative}.`;
+        }
+        if (platformGenitive) {
+            return ` Pociąg odjedzie z peronu ${platformGenitive}.`;
+        }
+        return ` Pociąg odjedzie z toru ${track}.`;
+    }
+
     const platform = ordinalLocativePolish(t.platform);
     const track = ordinalLocativePolish(t.track);
 
     if (!platform && !track) return '';
-
-    if (departureContext) {
-        if (platform && track) {
-            return ` Odjazd pociągu nastąpi przy peronie ${platform}, na torze ${track}.`;
-        }
-        if (platform) {
-            return ` Odjazd pociągu nastąpi przy peronie ${platform}.`;
-        }
-        return ` Odjazd pociągu nastąpi na torze ${track}.`;
-    }
 
     if (platform && track) {
         return ` Pociąg zatrzyma się przy peronie ${platform}, na torze ${track}.`;
@@ -3005,18 +3420,21 @@ function ensureStationPlatformTrackColumns() {
 function buildStationStandardAnnouncement(t) {
     const { trainType, reservationSuffix, number, viaText } = getStationTrainSpeechInfo(t);
     const className = trainType.charAt(0).toUpperCase() + trainType.slice(1);
+    const directionSpeech = getStationDirectionSpeech(t, viaText);
+    const terminalSpeech = getStationTerminalSpeech(t);
 
     // Na stacji początkowej lub gdy pociąg już stoi przy peronie mówimy o odjeździe.
-    const departureContext = !t.rawArrTime || t.gpsStatus === 'Na stacji';
+    // Stacja końcowa zawsze otrzymuje zapowiedź przyjazdu i kończenia biegu.
+    const departureContext = !t.isTerminalStation && (!t.rawArrTime || t.gpsStatus === 'Na stacji');
     const locationSpeech = buildStationLocationSpeech(t, departureContext);
 
     if (departureContext) {
         const time = formatServerTimeStr(t.actualDepTime);
-        return `${className}, ${number} do stacji ${t.destination}${viaText}, odjedzie o godzinie ${time}.${locationSpeech}${reservationSuffix}`;
+        return `${className}, ${number}${directionSpeech}, odjedzie o godzinie ${time}.${locationSpeech}${reservationSuffix}`;
     }
 
     const time = formatServerTimeStr(t.actualArrTime);
-    return `${className}, ${number} do stacji ${t.destination}${viaText}, przyjedzie o godzinie ${time}.${locationSpeech}${reservationSuffix} Prosimy zachować ostrożność i nie zbliżać się do krawędzi peronu.`;
+    return `${className}, ${number}${directionSpeech}, przyjedzie o godzinie ${time}.${locationSpeech}${terminalSpeech}${reservationSuffix} Prosimy zachować ostrożność i nie zbliżać się do krawędzi peronu.`;
 }
 
 function buildStationDelayAnnouncement(t) {
@@ -3030,7 +3448,7 @@ function buildStationDelayAnnouncement(t) {
 
     // Komunikat o zmianie opóźnienia nie podaje peronu ani toru.
     // Informacja lokalizacyjna pozostaje w zapowiedzi wjazdu i odjazdu ze stacji.
-    return `Uwaga. ${className} ${number}, planowy ${eventWord} pociągu o godzinie ${timeToSpeak}, ${eventAction} z opóźnieniem około ${t.delayMin} minut. Opóźnienie może ulec zmianie.`;
+    return `Uwaga. ${className} ${number} do stacji ${t.destination}, planowy ${eventWord} pociągu o godzinie ${timeToSpeak}, ${eventAction} z opóźnieniem około ${t.delayMin} minut. Opóźnienie może ulec zmianie.`;
 }
 
 const SCHEDULED_TRAIN_TYPE_MAP = {
@@ -3059,6 +3477,18 @@ function normalizeTrainIdentifier(value) {
 
 function isOfficialCommercialStop(row) {
     return String(row?.stopType || '').trim().toLowerCase() === 'commercialstop';
+}
+
+function getFullTimetableDestination(train) {
+    const timetable = Array.isArray(train?.timetable) ? train.timetable : [];
+    const lastCommercialStop = [...timetable].reverse().find(row =>
+        isOfficialCommercialStop(row) && (row?.nameForPerson || row?.nameOfPoint)
+    );
+
+    return lastCommercialStop?.nameForPerson
+        || lastCommercialStop?.nameOfPoint
+        || train?.endStation
+        || '';
 }
 
 function mapScheduledTrainType(category) {
@@ -3130,12 +3560,15 @@ async function loadScheduledStationTimetable() {
         if (scheduledStartTime <= now || rawDepTime <= now) return;
 
         const category = String(stationStop.trainType || train.trainName || 'POC').split(/\s+-\s+/)[0].trim();
+        const carrierData = recognizeTrainCarrier(train);
         const displayedNumber = stationStop.displayedTrainNumber || train.trainNoLocal || train.trainNoInternational || '0';
         const trainNumberKeys = [
             train.trainNoLocal,
             train.trainNoInternational,
             stationStop.displayedTrainNumber
         ].map(normalizeTrainIdentifier).filter(Boolean);
+
+        const fullRouteDestination = getFullTimetableDestination(train) || 'Nieznana';
 
         scheduledEntries.push({
             journeyId: `scheduled:${train.runId || displayedNumber}:${stationStop.pointId || stationIndex}`,
@@ -3158,7 +3591,9 @@ async function loadScheduledStationTimetable() {
             trainName: `${category} ${displayedNumber}`,
             trainCategory: category,
             trainTypeRaw: mapScheduledTrainType(category),
-            destination: train.endStation || 'Nieznana',
+            ...carrierData,
+            destination: fullRouteDestination,
+            isTerminalStation: normalizeStationName(fullRouteDestination) === normalizedStation,
             viaText: getScheduledViaText(timetable, stationIndex),
             platform: stationStop.platform || null,
             track: stationStop.track || null,
@@ -3193,6 +3628,8 @@ function getDisplayedStationJourneyIds() {
 }
 
 async function startStationMode() {
+    stopPendolinoStopMusic();
+    closeStationMap({ reset: true });
     activeStationName = stationSelect.value;
     ensureStationPlatformTrackColumns();
     setupScreen.style.display = 'none';
@@ -3480,17 +3917,38 @@ async function syncNewTrains(activeTrains) {
                             ? Math.max(effectiveActualArrTime, effectiveRawDepTime + stationShiftMinutes * 60000)
                             : actualDepTime;
                         const activeTrainNumber = t.originEvent?.transport?.number || '0';
+                        const cachedFullTimetable = (
+                            fullServerTimetableCache?.serverCode === String(activeServerCode || '').trim().toLowerCase()
+                        ) ? fullServerTimetableCache.data : [];
+                        const matchedFullTimetable = findFullTimetableForJourney(
+                            cachedFullTimetable,
+                            data,
+                            activeTrainNumber
+                        );
+                        const effectiveDestination = getFullTimetableDestination(matchedFullTimetable)
+                            || scheduledRecord?.destination
+                            || destName;
+                        const isTerminalStation = normalizeStationName(effectiveDestination)
+                            === normalizeStationName(activeStationName);
+                        const carrierData = recognizeTrainCarrier(
+                            t.originEvent?.transport,
+                            mainEvent?.transport,
+                            scheduledRecord,
+                            matchedFullTimetable
+                        );
                         const activeTrainNumberKeys = [
                             ...(scheduledRecord?.trainNumberKeys || []),
+                            matchedFullTimetable?.trainNoLocal,
+                            matchedFullTimetable?.trainNoInternational,
                             normalizeTrainIdentifier(activeTrainNumber)
-                        ].filter(Boolean);
+                        ].map(normalizeTrainIdentifier).filter(Boolean);
 
                         const activeRecordData = {
                             journeyId: t.journeyId,
-                            scheduleRunId: scheduledRecord?.scheduleRunId || '',
+                            scheduleRunId: scheduledRecord?.scheduleRunId || matchedFullTimetable?.runId || '',
                             scheduledStartTime: scheduledRecord?.scheduledStartTime || toTimestamp(data.events[0]?.scheduledTime),
                             trainNumberKeys: [...new Set(activeTrainNumberKeys)],
-                            fromFullSchedule: Boolean(scheduledRecord?.fromFullSchedule),
+                            fromFullSchedule: Boolean(scheduledRecord?.fromFullSchedule || matchedFullTimetable),
                             seenOnMap: true,
                             notSpawnedExpired: false,
                             time: formatServerTimeStr(effectiveRawDepTime),
@@ -3506,7 +3964,9 @@ async function syncNewTrains(activeTrains) {
                             trainName: `${t.originEvent?.transport?.category || 'POC'} ${activeTrainNumber}`,
                             trainCategory: t.originEvent?.transport?.category || 'POC',
                             trainTypeRaw: t.originEvent?.transport?.type || 'UNKNOWN',
-                            destination: destName,
+                            ...carrierData,
+                            destination: effectiveDestination,
+                            isTerminalStation,
                             viaText: viaText || scheduledRecord?.viaText || '',
                             platform: plat || scheduledRecord?.platform || null,
                             track: trk || scheduledRecord?.track || null,
@@ -3567,19 +4027,15 @@ function renderStationBoard() {
 
     displayList.forEach(t => {
         const tr = document.createElement('tr');
+        tr.dataset.journeyId = String(t.journeyId);
+        if (activeStationAnnouncementJourneyId === String(t.journeyId)) {
+            tr.classList.add('is-announcing');
+        }
 
-        let typeStr = uiText('station.typeRegional');
-        const fourDigitClass = classifyFourDigitTrain(t.trainName);
-        if (fourDigitClass === FOUR_DIGIT_TRAIN_CLASS.REGIONAL_LKA) typeStr = uiText('station.typeLkaExpress');
-        else if (fourDigitClass === FOUR_DIGIT_TRAIN_CLASS.INTERCITY && isMpeTrain(t.trainCategory, t.trainName)) typeStr = uiText('station.typeTlk');
-        else if (fourDigitClass === FOUR_DIGIT_TRAIN_CLASS.INTERCITY) typeStr = uiText('station.typeLongDistance');
-        else if (isEijPendolino(t.trainTypeRaw, t.trainCategory, t.trainName)) typeStr = uiText('station.typeExpressPremium');
-        else if (isEijRegionalLka(t.trainTypeRaw, t.trainCategory, t.trainName)) typeStr = uiText('station.typeLkaExpress');
-        else if (t.trainCategory.includes('EIP') || t.trainName.includes('EIP')) typeStr = uiText('station.typeLongDistance');
-        else if (t.trainCategory.includes('Łs') || t.trainName.includes('Łs')) typeStr = uiText('station.typeFastPassenger');
-        else if (isMpeTrain(t.trainCategory, t.trainName)) typeStr = uiText('station.typeTlk');
-        else if (LONG_DISTANCE_EXPRESS_TYPES.has(t.trainTypeRaw)) typeStr = uiText('station.typeLongDistance');
-        else if (t.trainCategory.includes('ŁKA')) typeStr = uiText('station.typeSprinter');
+        const carrier = recognizeTrainCarrier(t);
+        const carrierDisplay = carrier.carrierKnown
+            ? carrier.carrierShortName
+            : uiText('station.carrierUnknown');
 
         let timeHtml = '';
         let arrHtml = formatServerTimeStr(t.rawArrTime);
@@ -3622,7 +4078,7 @@ function renderStationBoard() {
 
         tr.innerHTML = `
             <td>${timeHtml}</td>
-            <td><div class="plk-train-name">${t.trainName}</div><span class="plk-train-type">${typeStr}</span></td>
+            <td><div class="plk-train-name">${t.trainName}</div><span class="plk-train-type">${carrierDisplay}</span></td>
             <td><div class="plk-dest">${t.destination}</div>${t.viaText ? `<span class="plk-via">${uiText('station.via', { via: t.viaText })}</span>` : ''}</td>
             <td style="text-align: center; font-weight: bold; font-size: 28px; color: #ffcc00;">${platformDisplay}</td>
             <td style="text-align: center; font-weight: bold; font-size: 28px; color: #ffcc00;">${trackDisplay}</td>
@@ -3764,7 +4220,7 @@ function startStationLiveTracking() {
                         t.delayMin >= STATION_DELAY_ANNOUNCEMENT_MINUTES &&
                         previousSpokenDelay !== t.delayMin
                     ) {
-                        playGongAndSpeak(buildStationDelayAnnouncement(t), stationVoice);
+                        playGongAndSpeak(buildStationDelayAnnouncement(t), stationVoice, t.journeyId);
                         t.lastDelaySpoken = t.delayMin;
                         console.log(`[STACJA] Zapowiedź opóźnienia ${t.trainName}: +${t.delayMin} min.`);
                     } else if (
@@ -3774,7 +4230,7 @@ function startStationLiveTracking() {
                     ) {
                         // Zgodnie z założeniem: gdy opóźnienie znika, zamiast komunikatu
                         // „opóźnienie zlikwidowane” odtwarzamy zwykłą zapowiedź pociągu.
-                        playGongAndSpeak(buildStationStandardAnnouncement(t), stationVoice);
+                        playGongAndSpeak(buildStationStandardAnnouncement(t), stationVoice, t.journeyId);
                         t.lastDelaySpoken = 0;
                         standardAnnouncementPlayedThisCycle = true;
                         console.log(`[STACJA] ${t.trainName} wrócił do rozkładu – standardowa zapowiedź.`);
@@ -3811,7 +4267,8 @@ function startStationLiveTracking() {
                         if (t.isPassing) {
                             playGongAndSpeak(
                                 'Uwaga. Przez stację przejedzie pociąg bez zatrzymania. Prosimy o zachowanie ostrożności oraz nie zbliżanie się do krawędzi peronu.',
-                                stationVoice
+                                stationVoice,
+                                t.journeyId
                             );
                         } else {
                             let speech = buildStationStandardAnnouncement(t);
@@ -3822,9 +4279,13 @@ function startStationLiveTracking() {
                                 const { trainType, reservationSuffix, number, viaText } = getStationTrainSpeechInfo(t);
                                 const time = formatServerTimeStr(t.actualArrTime);
                                 const locationSpeech = buildStationLocationSpeech(t, false);
-                                speech = `Opóźniony ${trainType} ${number} do stacji ${t.destination}${viaText}, przyjedzie o godzinie ${time}.${locationSpeech}${reservationSuffix} Prosimy zachować ostrożność i nie zbliżać się do krawędzi peronu.`;
+                                const directionSpeech = t.isTerminalStation
+                                    ? ` do stacji ${t.destination}`
+                                    : getStationDirectionSpeech(t, viaText);
+                                const terminalSpeech = getStationTerminalSpeech(t);
+                                speech = `Opóźniony ${trainType} ${number}${directionSpeech}, przyjedzie o godzinie ${time}.${locationSpeech}${terminalSpeech}${reservationSuffix} Prosimy zachować ostrożność i nie zbliżać się do krawędzi peronu.`;
                             }
-                            playGongAndSpeak(speech, stationVoice);
+                            playGongAndSpeak(speech, stationVoice, t.journeyId);
                         }
                     }
                 }
@@ -3832,14 +4293,15 @@ function startStationLiveTracking() {
                 const stopDuration = Math.max(0, t.actualDepTime - t.actualArrTime);
                 const timeDiffDepMinutes = (t.actualDepTime - now) / 60000;
 
-                if (t.seenOnMap && !t.cancelled && !t.isPassing && stopDuration > 3 * 60000) {
+                if (t.seenOnMap && !t.cancelled && !t.isPassing && !t.isTerminalStation && stopDuration > 3 * 60000) {
                     if (timeDiffDepMinutes <= 3 && timeDiffDepMinutes > 0 && !t.departureAnnounced) {
                         t.departureAnnounced = true;
                         const { trainType, number, viaText } = getStationTrainSpeechInfo(t);
                         const className = trainType.charAt(0).toUpperCase() + trainType.slice(1);
                         const formattedDep = formatServerTimeStr(t.actualDepTime);
                         const locationSpeech = buildStationLocationSpeech(t, true);
-                        playGongAndSpeak(`${className}, ${number} do stacji ${t.destination}${viaText}, odjedzie o godzinie ${formattedDep}.${locationSpeech}`, stationVoice);
+                        const directionSpeech = getStationDirectionSpeech(t, viaText);
+                        playGongAndSpeak(`${className}, ${number}${directionSpeech}, odjedzie o godzinie ${formattedDep}.${locationSpeech}`, stationVoice, t.journeyId);
                     }
                 }
 
@@ -3935,17 +4397,20 @@ async function loadTrainsForOnboard(serverCode) {
         }
 
         passengerTrains.forEach(t => {
-            const category = t.originEvent?.transport?.category || 'POC';
-            const number = t.originEvent?.transport?.number || '0';
+            const transport = t.originEvent?.transport || {};
+            const category = transport.category || 'POC';
+            const number = transport.number || '0';
             const destination = t.destinationEvent?.stopPlace?.name || '?';
+            const carrierData = recognizeTrainCarrier(transport);
             
             allPassengerTrains.push({
                 journeyId: t.journeyId,
                 label: `${category} ${number} ${destination}`,
                 trainInfo: `${category} ${number}`,
                 destination: destination,
-                type: t.originEvent?.transport?.type,
-                rawNumber: number 
+                type: transport.type,
+                rawNumber: number,
+                ...carrierData
             });
         });
 
@@ -4015,6 +4480,13 @@ function renderTrainOptions(filterText = '') {
             opt.dataset.destination = t.destination;
             opt.dataset.type = t.type;
             opt.dataset.rawNumber = t.rawNumber;
+            opt.dataset.carrierId = t.carrierId;
+            opt.dataset.carrierShortName = t.carrierShortName;
+            opt.dataset.carrierFullName = t.carrierFullName;
+            opt.dataset.carrierSpeechName = t.carrierSpeechName;
+            opt.dataset.carrierKnown = String(t.carrierKnown);
+            opt.dataset.commercialCategory = t.trainCommercialCategory;
+            opt.dataset.commercialCategoryName = t.trainCommercialCategoryName;
             if (t.journeyId === selectedJourneyId) opt.selected = true;
             trainSelect.appendChild(opt);
         });
@@ -4241,7 +4713,180 @@ function renderRouteUIOnboard(routeArray) {
     });
     adjustRouteFontsOnboard();
     updateOnboardRouteProgress(routeArray);
+    updateOnboardHeader();
 }
+
+function updateOnboardHeader() {
+    const trainInfo = document.querySelector('.train-info');
+    if (!trainInfo) return;
+
+    if (!onboardMapOpen) {
+        trainInfo.textContent = activeTrainDisplayName
+            ? uiText('onboard.direction', {
+                train: activeTrainDisplayName,
+                destination: activeDestination
+            })
+            : uiText('common.loadingData');
+        return;
+    }
+
+    const label = document.querySelector('.current-status .label')?.textContent?.trim()
+        || uiText('onboard.nextStation');
+    const station = document.querySelector('.next-station')?.textContent?.trim() || '...';
+    const labelElement = document.createElement('span');
+    const stationElement = document.createElement('span');
+    labelElement.className = 'onboard-map-header-label';
+    stationElement.className = 'onboard-map-header-station';
+    labelElement.textContent = label;
+    stationElement.textContent = station;
+    trainInfo.replaceChildren(labelElement, stationElement);
+}
+
+function setOnboardMapMessage(translationKey, visible) {
+    if (!onboardMapLoading) return;
+    onboardMapLoading.textContent = uiText(translationKey);
+    onboardMapLoading.dataset.i18n = translationKey;
+    onboardMapLoading.hidden = !visible;
+}
+
+function getSimRailMapUrl() {
+    const serverCode = String(activeServerCode || '').trim().toLowerCase();
+    return serverCode ? `https://map.simrail.app/server/${encodeURIComponent(serverCode)}` : '';
+}
+
+function refreshEmbeddedMapLayout(webview, logLabel) {
+    requestAnimationFrame(() => {
+        webview.focus();
+        webview.executeJavaScript(
+            'window.dispatchEvent(new Event("resize")); true;',
+            true
+        ).catch(err => console.warn(`[MAPA ${logLabel}] Nie udało się odświeżyć rozmiaru widoku:`, err));
+    });
+}
+
+function openOnboardMap() {
+    const mapUrl = getSimRailMapUrl();
+    if (!onboardMapView || !onboardMapWebview || !mapUrl) return;
+
+    onboardMapOpen = true;
+    sipScreen.classList.add('map-open');
+    onboardMapView.hidden = false;
+    document.querySelector('.sip-content').hidden = true;
+    onboardMapBtn.dataset.i18nTitle = 'onboard.closeMap';
+    onboardMapBtn.dataset.i18nAriaLabel = 'onboard.closeMap';
+    onboardMapBtn.title = uiText('onboard.closeMap');
+    onboardMapBtn.setAttribute('aria-label', uiText('onboard.closeMap'));
+    updateOnboardHeader();
+
+    if (onboardMapWebview.getAttribute('src') !== mapUrl) {
+        setOnboardMapMessage('onboard.mapLoading', true);
+        onboardMapWebview.setAttribute('src', mapUrl);
+    } else {
+        // Webview pozostaje załadowany podczas ukrycia. Zdarzenie resize jedynie
+        // odświeża rozmiar kafelków mapy i nie zmienia pozycji ani zaznaczenia.
+        refreshEmbeddedMapLayout(onboardMapWebview, 'MASZYNISTA');
+    }
+}
+
+function closeOnboardMap({ reset = false } = {}) {
+    onboardMapOpen = false;
+    sipScreen.classList.remove('map-open');
+    if (onboardMapView) onboardMapView.hidden = true;
+    const sipContent = document.querySelector('.sip-content');
+    if (sipContent) sipContent.hidden = false;
+
+    if (onboardMapBtn) {
+        onboardMapBtn.dataset.i18nTitle = 'onboard.openMap';
+        onboardMapBtn.dataset.i18nAriaLabel = 'onboard.openMap';
+        onboardMapBtn.title = uiText('onboard.openMap');
+        onboardMapBtn.setAttribute('aria-label', uiText('onboard.openMap'));
+    }
+
+    if (reset && onboardMapWebview) {
+        onboardMapWebview.removeAttribute('src');
+        setOnboardMapMessage('onboard.mapLoading', true);
+    }
+    updateOnboardHeader();
+}
+
+onboardMapBtn?.addEventListener('click', () => {
+    if (onboardMapOpen) closeOnboardMap();
+    else openOnboardMap();
+});
+
+onboardMapWebview?.addEventListener('did-finish-load', () => {
+    setOnboardMapMessage('onboard.mapLoading', false);
+});
+
+onboardMapWebview?.addEventListener('did-fail-load', event => {
+    if (event.errorCode === -3) return;
+    console.error('[MAPA] Błąd ładowania mapy:', event.errorDescription);
+    setOnboardMapMessage('onboard.mapUnavailable', true);
+});
+
+function setStationMapMessage(translationKey, visible) {
+    if (!stationMapLoading) return;
+    stationMapLoading.textContent = uiText(translationKey);
+    stationMapLoading.dataset.i18n = translationKey;
+    stationMapLoading.hidden = !visible;
+}
+
+function openStationMap() {
+    const mapUrl = getSimRailMapUrl();
+    if (!stationMapView || !stationMapWebview || !mapUrl) return;
+
+    stationMapOpen = true;
+    stationScreen.classList.add('map-open');
+    stationMapView.hidden = false;
+    const stationBoard = document.querySelector('.plk-board');
+    if (stationBoard) stationBoard.hidden = true;
+    stationMapBtn.dataset.i18nTitle = 'station.closeMap';
+    stationMapBtn.dataset.i18nAriaLabel = 'station.closeMap';
+    stationMapBtn.title = uiText('station.closeMap');
+    stationMapBtn.setAttribute('aria-label', uiText('station.closeMap'));
+
+    if (stationMapWebview.getAttribute('src') !== mapUrl) {
+        setStationMapMessage('station.mapLoading', true);
+        stationMapWebview.setAttribute('src', mapUrl);
+    } else {
+        refreshEmbeddedMapLayout(stationMapWebview, 'STACJA');
+    }
+}
+
+function closeStationMap({ reset = false } = {}) {
+    stationMapOpen = false;
+    stationScreen.classList.remove('map-open');
+    if (stationMapView) stationMapView.hidden = true;
+    const stationBoard = document.querySelector('.plk-board');
+    if (stationBoard) stationBoard.hidden = false;
+
+    if (stationMapBtn) {
+        stationMapBtn.dataset.i18nTitle = 'station.openMap';
+        stationMapBtn.dataset.i18nAriaLabel = 'station.openMap';
+        stationMapBtn.title = uiText('station.openMap');
+        stationMapBtn.setAttribute('aria-label', uiText('station.openMap'));
+    }
+
+    if (reset && stationMapWebview) {
+        stationMapWebview.removeAttribute('src');
+        setStationMapMessage('station.mapLoading', true);
+    }
+}
+
+stationMapBtn?.addEventListener('click', () => {
+    if (stationMapOpen) closeStationMap();
+    else openStationMap();
+});
+
+stationMapWebview?.addEventListener('did-finish-load', () => {
+    setStationMapMessage('station.mapLoading', false);
+});
+
+stationMapWebview?.addEventListener('did-fail-load', event => {
+    if (event.errorCode === -3) return;
+    console.error('[MAPA STACJA] Błąd ładowania mapy:', event.errorDescription);
+    setStationMapMessage('station.mapUnavailable', true);
+});
 
 const ONBOARD_NEXT_STATION_DISTANCE_LONG_DISTANCE_METERS = 500;
 const ONBOARD_NEXT_STATION_DISTANCE_REGIONAL_METERS = 350;
@@ -4250,6 +4895,14 @@ function getOnboardNextStationAnnouncementDistanceMeters() {
     return activeTrainType === 'REGIONAL_TRAIN'
         ? ONBOARD_NEXT_STATION_DISTANCE_REGIONAL_METERS
         : ONBOARD_NEXT_STATION_DISTANCE_LONG_DISTANCE_METERS;
+}
+
+function getOnboardLongDistanceTrainKind() {
+    if (isMpeTrain(activeTrainDisplayName)) return 'pociągu TLK';
+    if (isEijTrain(activeTrainDisplayName)) return 'pociągu Express Intercity Premium';
+    if (isEieTrain(activeTrainDisplayName)) return 'pociągu Express Intercity';
+    if (isEceTrain(activeTrainDisplayName)) return 'pociągu Intercity';
+    return 'pociągu intercity';
 }
 
 function normalizeOnboardTimetableText(value) {
@@ -4265,7 +4918,7 @@ function getFullTimetableFirstTime(train) {
     return toTimestamp(firstTimedPoint?.departureTime || firstTimedPoint?.arrivalTime);
 }
 
-function findFullTimetableForOnboardJourney(fullTimetable, journeyData, selectedTrainNumber = '') {
+function findFullTimetableForJourney(fullTimetable, journeyData, selectedTrainNumber = '') {
     if (!Array.isArray(fullTimetable) || !Array.isArray(journeyData?.events)) return null;
 
     const stopEvents = journeyData.events.filter(ev => ev?.stopPlace?.name);
@@ -4353,11 +5006,22 @@ function getOnboardEventDelayMinutes(event, plannedTime) {
 }
 
 async function startOnboardMode() {
+    stopPendolinoStopMusic();
     resetOnboardRouteProgress();
+    closeOnboardMap({ reset: true });
     activeJourneyId = trainSelect.value;
     const selectedOption = trainSelect.options[trainSelect.selectedIndex];
     activeTrainNumber = selectedOption.dataset.rawNumber || '';
     activeTrainDisplayName = selectedOption.dataset.trainInfo || '';
+    activeTrainCarrierInfo = {
+        carrierId: selectedOption.dataset.carrierId || UNKNOWN_TRAIN_CARRIER.id,
+        carrierShortName: selectedOption.dataset.carrierShortName || UNKNOWN_TRAIN_CARRIER.shortName,
+        carrierFullName: selectedOption.dataset.carrierFullName || UNKNOWN_TRAIN_CARRIER.fullName,
+        carrierSpeechName: selectedOption.dataset.carrierSpeechName || UNKNOWN_TRAIN_CARRIER.speechName,
+        carrierKnown: selectedOption.dataset.carrierKnown === 'true',
+        trainCommercialCategory: selectedOption.dataset.commercialCategory || '',
+        trainCommercialCategoryName: selectedOption.dataset.commercialCategoryName || ''
+    };
     
     activeDestination = selectedOption.dataset.destination;
     
@@ -4374,10 +5038,7 @@ async function startOnboardMode() {
     sipScreen.style.display = 'flex';
     setModeApiWarning('onboard', false);
     setModeRefreshButtonBusy(onboardDataRefreshBtn, true);
-    document.querySelector('.train-info').textContent = uiText('onboard.direction', {
-        train: activeTrainDisplayName,
-        destination: activeDestination
-    });
+    updateOnboardHeader();
     document.querySelector('.current-status .label').textContent = uiText('onboard.nextStation');
     document.querySelector('.eta-box .label').textContent = uiText('onboard.plannedArrival');
 
@@ -4413,6 +5074,7 @@ async function startOnboardMode() {
 async function refreshOnboardModeData() {
     if (!onboardDataRefreshBtn || onboardDataRefreshBtn.disabled) return;
 
+    stopPendolinoStopMusic();
     setModeRefreshButtonBusy(onboardDataRefreshBtn, true);
     if (trackingInterval) {
         clearInterval(trackingInterval);
@@ -4472,12 +5134,18 @@ async function loadJourneyRouteOnboard(journeyId, trainLat, trainLon, selectedTr
             })
         ]);
 
-        const matchedFullTimetable = findFullTimetableForOnboardJourney(
+        const matchedFullTimetable = findFullTimetableForJourney(
             fullTimetable,
             journeyData,
             selectedTrainNumber
         );
         const fullTimetableStops = buildFullTimetableStopMap(matchedFullTimetable);
+
+        activeTrainCarrierInfo = recognizeTrainCarrier(
+            journeyData.events?.[0]?.transport,
+            matchedFullTimetable,
+            activeTrainCarrierInfo
+        );
 
         if (matchedFullTimetable) {
             console.log(`[MASZYNISTA] Godziny planowe pobrano z pełnej rozkładówki: ${matchedFullTimetable.trainNoLocal || selectedTrainNumber}.`);
@@ -4563,10 +5231,7 @@ async function loadJourneyRouteOnboard(journeyId, trainLat, trainLon, selectedTr
                 const routeDestination = targetStationList[targetStationList.length - 1].station;
                 if (routeDestination) {
                     activeDestination = routeDestination;
-                    document.querySelector('.train-info').textContent = uiText('onboard.direction', {
-                        train: activeTrainDisplayName,
-                        destination: activeDestination
-                    });
+                    updateOnboardHeader();
                 }
             }
 
@@ -4640,6 +5305,7 @@ function startOnboardLiveTracking() {
             const myTrain = trains.find(t => t.journeyId === activeJourneyId);
             
             if (!myTrain || !myTrain.liveData) {
+                stopPendolinoStopMusic();
                 missingTrainCount++;
                 if (missingTrainCount >= 4) document.querySelector('.back-btn').click();
                 return;
@@ -4687,7 +5353,10 @@ function startOnboardLiveTracking() {
             const currentLon = myTrain.liveData.position.longitude;
             onboardLastKnownPosition = { lat: currentLat, lon: currentLon };
             const targetStationIndex = targetStationList.findIndex(s => s.current);
-            if (targetStationIndex === -1) return;
+            if (targetStationIndex === -1) {
+                updatePendolinoStopMusic(myTrain.liveData.speed);
+                return;
+            }
             
             const targetStation = targetStationList[targetStationIndex];
             const distMeters = getDistanceFromLatLonInMeters(currentLat, currentLon, targetStation.lat, targetStation.lon);
@@ -4701,7 +5370,7 @@ function startOnboardLiveTracking() {
                 if (distFromPrev >= nextStationAnnouncementDistance && !targetStation.departureAnnounced && !targetStation.arrivalPlayed) {
                     targetStation.departureAnnounced = true;
                     if (currentIsIntercity) {
-                        const trainKind = activeTrainIsMpe ? 'pociągu TLK' : 'pociągu intercity';
+                        const trainKind = getOnboardLongDistanceTrainKind();
                         speakText(`Witamy Państwa na pokładzie ${trainKind} do stacji ${activeDestination}. Następna stacja ${targetStation.station}.`, assignedVoice);
                     } else {
                         announceRegionalNextStation(targetStation.station, activeDestination, assignedVoice);
@@ -4709,7 +5378,7 @@ function startOnboardLiveTracking() {
                 }
                 if (currentHasWars && distFromPrev >= 2000 && !targetStation.warsAnnounced && !targetStation.arrivalPlayed) {
                     targetStation.warsAnnounced = true;
-                    speakText(`Szanowni Państwo. Zapraszamy do skorzystania ze strefy gastronomicznej wars, która znajduje się w wagonie numer trzy. Udając się do strefy wars prosimy pamiętać o zabraniu biletu oraz dokumentu tożsamości. Dziękujemy.`, assignedVoice);
+                    speakText(`Szanowni Państwo. Zapraszamy do skorzystania ze strefy gastronomicznej wars, która znajduje się w wagonie numer trzy. Udając się do strefy wars prosimy pamiętać o zabraniu biletu oraz dokumentu tożsamości. Dzieńkujemy.`, assignedVoice);
                 }
             }
 
@@ -4720,7 +5389,7 @@ function startOnboardLiveTracking() {
                 document.querySelector('.eta-box .label').textContent = uiText('onboard.plannedDeparture');
                 renderRouteUIOnboard(targetStationList);
                 if (currentIsIntercity) {
-                    speakText(`Szanowni państwo zbliżamy się do stacji ${targetStation.station}. Osoby wysiadające prosimy o zabranie bagażu oraz rzeczy osobistych. Dziękujemy za wspólną podróż i życzymy miłego pobytu.`, assignedVoice);
+                    speakText(`Szanowni państwo zbliżamy się do stacji ${targetStation.station}. Osoby wysiadające prosimy o zabranie bagażu oraz rzeczy osobistych. Dzieńkujemy za wspólną podróż i życzymy miłego pobytu.`, assignedVoice);
                 } else {
                     announceRegionalStation(targetStation.station, assignedVoice);
                 }
@@ -4741,6 +5410,7 @@ function startOnboardLiveTracking() {
                 }
             }
 
+            updatePendolinoStopMusic(myTrain.liveData.speed);
             updateOnboardRouteProgress(targetStationList, onboardLastKnownPosition);
         } catch (err) {
             console.error('[MASZYNISTA] Błąd pętli live tracking:', err);
@@ -4792,14 +5462,6 @@ function refreshLocalizedInterface() {
     }
 
     if (sipScreen.style.display !== 'none') {
-        const trainInfo = document.querySelector('.train-info');
-        if (trainInfo && activeTrainDisplayName) {
-            trainInfo.textContent = uiText('onboard.direction', {
-                train: activeTrainDisplayName,
-                destination: activeDestination
-            });
-        }
-
         const activeStop = targetStationList.find(stop => stop.current);
         const isAtStation = activeStop?.state === 'at-station';
         document.querySelector('.current-status .label').textContent = uiText(
@@ -4809,6 +5471,7 @@ function refreshLocalizedInterface() {
             isAtStation ? 'onboard.plannedDeparture' : 'onboard.plannedArrival'
         );
         renderRouteUIOnboard(targetStationList);
+        updateOnboardHeader();
     } else {
         updateOnboardRouteProgress(targetStationList);
     }

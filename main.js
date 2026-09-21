@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, powerSaveBlocker, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, powerSaveBlocker, dialog, shell } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -55,6 +55,8 @@ function createWindow() {
       nodeIntegration: true,
       contextIsolation: false,
       webSecurity: false,
+      // Oficjalna mapa SimRail jest osadzana wyłącznie w trybie maszynisty.
+      webviewTag: true,
       // Aplikacja śledzi pociąg co kilka sekund także wtedy, gdy SimRail jest na pierwszym planie.
       // Wyłączenie throttlingu zapobiega ograniczaniu setInterval/fetch po przejściu okna w tło.
       backgroundThrottling: false
@@ -212,6 +214,18 @@ app.on('window-all-closed', () => {
 // ==========================================
 ipcMain.handle('get-app-version', () => {
   return app.getVersion();
+});
+
+ipcMain.handle('open-support-page', async () => {
+  const supportUrl = 'https://buycoffee.to/urso';
+
+  try {
+    await shell.openExternal(supportUrl);
+    return { success: true };
+  } catch (err) {
+    writeLog('Nie udało się otworzyć strony wsparcia.', err);
+    return { success: false, error: err?.message || String(err) };
+  }
 });
 
 // Renderer nie dostaje już ścieżki do pliku TEMP.
